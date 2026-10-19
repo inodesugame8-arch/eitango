@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sim": "node tools/fsrs-sim/sim.mjs"
   },
   "dependencies": {
     "dexie": "4.4.6",
