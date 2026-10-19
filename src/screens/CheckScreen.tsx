@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import { caseWord, JUDGE_CASES, type JudgeCase } from '../check/judgeCases.ts'
-import { CHECK_DB_NAME, DEFAULT_MODEL, FILL_INTERVAL_MS, FILL_TIMEOUT_MS, MODELS } from '../lib/config.ts'
+import { CHECK_DB_NAME, DEFAULT_MODEL, FILL_INTERVAL_MS, FILL_TIMEOUT_MS, MODELS, VOICE_RATES } from '../lib/config.ts'
 import { callGemini, GeminiError, type FormatStyle } from '../lib/gemini/client.ts'
 import { judgePrompt, parseJudge } from '../lib/gemini/prompts.ts'
 import { iosVersion, isIOS, isPersisted, isStandalone, requestPersist } from '../lib/platform.ts'
@@ -274,7 +274,7 @@ function audioSession(): AudioSessionLike | undefined {
 
 function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
   const [lines, add, clear] = useLog()
-  const [rate, setRate] = useState<1 | 0.8>(1)
+  const [rate, setRate] = useState(1)
   const session = audioSession()
 
   const onEvent: SpeechLog = useCallback((event, detail) => add(`on${event} ${detail}`), [add])
@@ -290,7 +290,7 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
   const say = useCallback(
     async (label: string) => {
       const r = await speak(PHRASE, rate, onEvent)
-      add(`${label} → ${r}`)
+      add(`${label} → ${r}（${rate.toFixed(1)} 倍）`)
     },
     [add, onEvent, rate],
   )
@@ -361,13 +361,20 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
         </Button>
       </Row>
       <Row>
-        <span>速さ</span>
-        <Button onClick={() => setRate(1)} disabled={rate === 1}>
-          1.0 倍
-        </Button>
-        <Button onClick={() => setRate(0.8)} disabled={rate === 0.8}>
-          0.8 倍
-        </Button>
+        <label className="flex items-center gap-2">
+          速さ
+          <select
+            value={rate}
+            onChange={(e) => setRate(Number(e.target.value))}
+            className="min-h-11 rounded-lg border border-neutral-400 px-2 dark:border-neutral-600"
+          >
+            {VOICE_RATES.map((r) => (
+              <option key={r} value={r}>
+                {r.toFixed(1)} 倍
+              </option>
+            ))}
+          </select>
+        </label>
       </Row>
       {session ? (
         <Row>

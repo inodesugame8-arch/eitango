@@ -58,7 +58,7 @@ export interface Settings {
   apiKey?: string
   model: string
   newWordsPerDay: number
-  voiceRate: 1 | 0.8
+  voiceRate: number // config.ts の VOICE_RATES のどれか（0.5〜2.0 の 0.1 刻み）
   lastExportAt?: Date
   mutedNoticeShown: boolean
 }

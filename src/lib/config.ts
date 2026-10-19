@@ -27,3 +27,5 @@ export const FILL_TIMEOUT_MS = 25_000
 export const FILL_INTERVAL_MS = 4_000
 export const SPEAK_RESTART_DELAY_MS = 250
 export const SPEAK_START_TIMEOUT_MS = 1_500
+// 読み上げの速さの選択肢（仕様書 10 章）。0.5〜2.0 の 0.1 刻み。iPhone では 2.0 が端末の最大の速さに当たる
+export const VOICE_RATES = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2] as const
