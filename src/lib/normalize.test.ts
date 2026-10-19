@@ -1,0 +1,112 @@
+import { describe, expect, it } from 'vitest'
+import { normalizeEn, normalizeJa } from './normalize.ts'
+
+describe('仕様書 7-1 の表の 5 例', () => {
+  it('アキラメル。 → あきらめる', () => {
+    expect(normalizeJa('アキラメル。')).toBe('あきらめる')
+  })
+
+  it('諦める → 諦める（漢字はそのまま）', () => {
+    expect(normalizeJa('諦める')).toBe('諦める')
+  })
+
+  it('Do you even wanna win? → do you even want to win', () => {
+    expect(normalizeEn('Do you even wanna win?')).toBe('do you even want to win')
+  })
+
+  it("I'm gonna carry → i am going to carry", () => {
+    expect(normalizeEn("I'm gonna carry")).toBe('i am going to carry')
+  })
+
+  it('Don’t give up!（曲がった引用符） → do not give up', () => {
+    expect(normalizeEn('Don’t give up!')).toBe('do not give up')
+  })
+})
+
+describe('normalizeJa', () => {
+  it('半角カナを NFKC でそろえてからひらがなにする', () => {
+    expect(normalizeJa('ｱｷﾗﾒﾙ')).toBe('あきらめる')
+  })
+
+  it('長音の「ー」は消さない', () => {
+    expect(normalizeJa('スーパー')).toBe('すーぱー')
+  })
+
+  it('空白（全角を含む）を消す', () => {
+    expect(normalizeJa(' あき　らめる ')).toBe('あきらめる')
+  })
+
+  it('仕様書の記号を消す', () => {
+    expect(normalizeJa('「諦める」')).toBe('諦める')
+    expect(normalizeJa('『諦める』！？')).toBe('諦める')
+    expect(normalizeJa('（諦める）')).toBe('諦める')
+    expect(normalizeJa('【諦める】［あ］')).toBe('諦めるあ')
+    expect(normalizeJa('諦める、あきらめる。')).toBe('諦めるあきらめる')
+    expect(normalizeJa('諦める〜')).toBe('諦める')
+    expect(normalizeJa('諦める…')).toBe('諦める')
+    expect(normalizeJa('勝つ・負ける')).toBe('勝つ負ける')
+    expect(normalizeJa('“諦める”')).toBe('諦める')
+  })
+
+  it('全角の英数字は NFKC で半角になる（大文字・小文字はそのまま）', () => {
+    expect(normalizeJa('ＧＧ１２３')).toBe('GG123')
+  })
+
+  it('記号だけの答えは空になる', () => {
+    expect(normalizeJa('。！？')).toBe('')
+  })
+})
+
+describe('normalizeEn', () => {
+  it('崩した言い方を展開する', () => {
+    expect(normalizeEn('wanna')).toBe('want to')
+    expect(normalizeEn('gonna')).toBe('going to')
+    expect(normalizeEn('gotta go')).toBe('got to go')
+    expect(normalizeEn('Gimme that')).toBe('give me that')
+    expect(normalizeEn('lemme see')).toBe('let me see')
+    expect(normalizeEn('kinda')).toBe('kind of')
+    expect(normalizeEn('sorta')).toBe('sort of')
+    expect(normalizeEn('dunno')).toBe('do not know')
+  })
+
+  it('語の一部は展開しない', () => {
+    expect(normalizeEn('wannabe')).toBe('wannabe')
+  })
+
+  it('短縮形を展開する', () => {
+    expect(normalizeEn("can't")).toBe('can not')
+    expect(normalizeEn("won't")).toBe('will not')
+    expect(normalizeEn("shan't")).toBe('shall not')
+    expect(normalizeEn('cannot')).toBe('can not')
+    expect(normalizeEn("isn't")).toBe('is not')
+    expect(normalizeEn("doesn't")).toBe('does not')
+    expect(normalizeEn("you're")).toBe('you are')
+    expect(normalizeEn("we've")).toBe('we have')
+    expect(normalizeEn("they'll")).toBe('they will')
+    expect(normalizeEn("I'd")).toBe('i would')
+  })
+
+  it("'s は展開せず、記号として消す", () => {
+    expect(normalizeEn("it's")).toBe('its')
+  })
+
+  it('曲がった引用符をまっすぐにしてから展開する', () => {
+    expect(normalizeEn('I’m')).toBe('i am')
+    expect(normalizeEn('can‘t')).toBe('can not')
+  })
+
+  it('英字・数字・空白以外を消し、空白を 1 つにまとめる', () => {
+    expect(normalizeEn('  GG,   well   played!!  ')).toBe('gg well played')
+    expect(normalizeEn('“nice”')).toBe('nice')
+    expect(normalizeEn('o7')).toBe('o7')
+  })
+
+  it('全角の英字を NFKC で半角にして小文字にする', () => {
+    expect(normalizeEn('ＧＧ')).toBe('gg')
+  })
+
+  it('展開した形と元の形が同じになる', () => {
+    expect(normalizeEn("Don't")).toBe(normalizeEn('do not'))
+    expect(normalizeEn('wanna win')).toBe(normalizeEn('want to win'))
+  })
+})
