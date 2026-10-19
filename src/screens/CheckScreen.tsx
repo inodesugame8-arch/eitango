@@ -297,6 +297,16 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
         >
           準備（音量 0）
         </Button>
+        <Button
+          onClick={() => {
+            // 本番の「始める」と同じ順番: 準備の 'ok' を読んだ直後に、同じ押す操作の中で読み上げる
+            unlockSpeech()
+            add('準備（音量 0 の ok を読んだ）')
+            void say('準備してすぐ読み上げる（「始める」と同じ順番）')
+          }}
+        >
+          準備してすぐ読み上げる
+        </Button>
         <Button onClick={() => void say('読み上げる')}>読み上げる</Button>
         <Button
           onClick={() => {
