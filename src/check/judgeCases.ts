@@ -32,7 +32,8 @@ const winEnJa: CaseWord = {
   meaning: '本気で勝つ気あんの？',
   tone: 'イラ立ち・皮肉。味方を責める言い方',
   accepted: ['本気で勝つ気あるの', '勝つ気あんの'],
-  nearMiss: ['勝ちたいの'],
+  // 「勝ちたいの」は入れない（入れると × にすべき答えになり、11 の「口調の違いは △」を試せない）
+  nearMiss: [],
   acceptedEn: ['Do you even wanna win?'],
 }
 
@@ -108,7 +109,8 @@ export const JUDGE_CASES: readonly JudgeCase[] = [
     context: 'stop throwing',
     meaning: 'わざと負ける・試合を投げる',
     accepted: ['わざと負ける', '試合を投げる'],
-    nearMiss: ['投げる'],
+    // 「投げる」は入れない（入れると × にすべき答えになり、「文脈と違う意味は △」を試せない）
+    nearMiss: [],
     acceptedEn: ['throw'],
     answer: '投げる',
     expected: 'close',
@@ -225,7 +227,8 @@ export const JUDGE_CASES: readonly JudgeCase[] = [
     acceptedEn: ['carry'],
     cloze: 'he ___ us',
     clozeAnswer: 'carried',
-    answer: 'carry',
+    // carry だと本番では照合で ○ になり AI に届かないので、届く語形にする
+    answer: 'carries',
     expected: 'close',
   },
 ]

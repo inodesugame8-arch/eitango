@@ -75,13 +75,22 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? `${e.name}: ${e.message}` : String(e)
 }
 
+// 止めた後に呼ばれたら待たない（止める知らせは 1 回しか来ないため）
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer)
+    if (signal?.aborted) {
       resolve()
-    })
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
   })
 }
 
@@ -270,6 +279,14 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
 
   const onEvent: SpeechLog = useCallback((event, detail) => add(`on${event} ${detail}`), [add])
 
+  // 画面を離れたら、待っている読み上げと Gemini の呼び出しを止める（この画面は本番にも残るため）
+  const life = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const ctl = new AbortController()
+    life.current = ctl
+    return () => ctl.abort()
+  }, [])
+
   const say = useCallback(
     async (label: string) => {
       const r = await speak(PHRASE, rate, onEvent)
@@ -311,7 +328,9 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
         <Button
           onClick={() => {
             add('3 秒待つ')
-            setTimeout(() => void say('3 秒後に読み上げる'), 3000)
+            setTimeout(() => {
+              if (!life.current?.signal.aborted) void say('3 秒後に読み上げる')
+            }, 3000)
           }}
         >
           3 秒後に読み上げる
@@ -323,7 +342,9 @@ function SpeechSection({ report, ai }: { report: Report; ai: AiOptions }) {
               return
             }
             add('Gemini を呼ぶ')
-            const a = await tryJudge(JUDGE_CASES[0], ai)
+            const signal = life.current?.signal
+            const a = await tryJudge(JUDGE_CASES[0], ai, signal)
+            if (signal?.aborted) return
             add(`Gemini ${attemptText(a)}`)
             await say('Gemini の返事の後に読み上げる')
           }}
@@ -411,6 +432,9 @@ function GeminiSection({
   const [running, setRunning] = useState(false)
   const abort = useRef<AbortController | null>(null)
 
+  // 画面を離れたら呼び出しを止める（この画面は本番にも残り、裏で呼び続けると学習の判定と回数の上限を取り合うため）
+  useEffect(() => () => abort.current?.abort(), [])
+
   useEffect(() => {
     getCheckDb()
       .kv.get(KEY_ROW)
@@ -444,6 +468,7 @@ function GeminiSection({
       if (i > 0) await sleep(FILL_INTERVAL_MS, ctl.signal)
       if (ctl.signal.aborted) break
       const a = await tryJudge(JUDGE_CASES[0], ai, ctl.signal)
+      if (ctl.signal.aborted) break // 止めた 1 回は記録しない（失敗に数えないため）
       setRuns((r) => r.map((x, j) => (j === index ? { ...x, attempts: [...x.attempts, a] } : x)))
     }
     setRunning(false)
@@ -567,6 +592,9 @@ function CasesSection({ report, ai }: { report: Report; ai: AiOptions }) {
   const [running, setRunning] = useState(false)
   const abort = useRef<AbortController | null>(null)
 
+  // 画面を離れたら呼び出しを止める（3. と同じ理由）
+  useEffect(() => () => abort.current?.abort(), [])
+
   const run = async (again: boolean): Promise<void> => {
     const ctl = new AbortController()
     abort.current = ctl
@@ -578,6 +606,7 @@ function CasesSection({ report, ai }: { report: Report; ai: AiOptions }) {
       if (i > 0) await sleep(FILL_INTERVAL_MS, ctl.signal)
       if (ctl.signal.aborted) break
       const a = await tryJudge(JUDGE_CASES[i], ai, ctl.signal)
+      if (ctl.signal.aborted) break // 止めた 1 回は記録しない（3. と同じ）
       setRuns((r) => r.map((x, j) => (j === index ? { ...x, results: [...x.results, a] } : x)))
     }
     setRunning(false)
@@ -614,8 +643,10 @@ function CasesSection({ report, ai }: { report: Report; ai: AiOptions }) {
   return (
     <Section title={TITLES.cases}>
       <p className="text-[13px] text-neutral-500">
-        照合を通さず直接 AI で判定する。{FILL_INTERVAL_MS / 1000} 秒あけて 1 問ずつ。使う設定は 3. で選んだもの
+        照合を通さず直接 AI で判定する。{FILL_INTERVAL_MS / 1000} 秒あけて 1 問ずつ
       </p>
+      {/* 押す前に見えるようにする（3. で最後に選んだ設定のまま走るため） */}
+      <p>使う設定: {aiLabel(ai)}（3. で選んだもの）</p>
       <Row>
         <Button onClick={() => void run(false)} disabled={running || ai.apiKey === ''}>
           20 問を判定する
@@ -629,7 +660,7 @@ function CasesSection({ report, ai }: { report: Report; ai: AiOptions }) {
       </Row>
       {runs.map((r, n) => (
         <p key={n}>
-          {n + 1} 回目: 期待と合った数 {matchCount(r.results)}/{r.results.length}
+          {n + 1} 回目（{r.label}）: 期待と合った数 {matchCount(r.results)}/{r.results.length}
         </p>
       ))}
       {last && <p>1 回目と最後の回で変わった問題: {changed.length > 0 ? changed.join('・') : 'なし'}</p>}
