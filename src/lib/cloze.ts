@@ -13,7 +13,7 @@ function escapeRegExp(text: string): string {
 }
 
 // 英語を出会った英文の中で探し（大文字・小文字は区別しない、語の切れ目で一致、語と語の間の空白の数は問わない）、
-// 見つかった所の語をどれも 1 つずつ ___ にした文と、最初に見つかった所の文字のままの答えを返す。見つからなければ null
+// 見つかった所の語を 1 つずつ ___ にした文と、文の中の文字のままの答えを返す。見つからないか、2 回以上あれば null
 export function makeCloze(term: string, sentence: string): { cloze: string; answer: string } | null {
   const words = splitWords(term)
   if (words.length === 0 || sentence === '') return null
@@ -23,8 +23,12 @@ export function makeCloze(term: string, sentence: string): { cloze: string; answ
   const re = new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'iu')
   const m = re.exec(sentence)
   if (!m) return null
-  // 同じ英語が 2 回以上あれば、どれも ___ にする（2 つ目が残ると答えが見えるため）
-  const cloze = sentence.replace(new RegExp(re.source, 'giu'), (f) => f.replace(/\S+/g, '___'))
+  // 同じ英語が 2 回以上あれば（重なって現れる場合も）作らない。全部を ___ にすると何語入れるか分からず、
+  // 1 つだけだと残りから答えが見えるため（仕様書 7-5）
+  const rest = new RegExp(re.source, 'giu')
+  rest.lastIndex = m.index + 1
+  if (rest.exec(sentence)) return null
+  const cloze = sentence.replace(re, (f) => f.replace(/\S+/g, '___'))
   return { cloze, answer: m[0] }
 }
 

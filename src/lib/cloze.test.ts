@@ -42,15 +42,16 @@ describe('makeCloze の細部', () => {
     expect(makeCloze('  give  up ', 'I give up')).toEqual({ cloze: 'I ___ ___', answer: 'give up' })
   })
 
-  it('同じ英語が 2 回以上あれば、どれも ___ にする（答えは最初に見つかった所の文字）', () => {
-    expect(makeCloze('give up', 'give up? never give up')).toEqual({
-      cloze: '___ ___? never ___ ___',
-      answer: 'give up',
-    })
+  it('同じ英語が文の中に 2 回以上あれば作らない（全部を ___ にすると何語入れるか分からないため）', () => {
+    expect(makeCloze('give up', 'give up? never give up')).toBeNull()
   })
 
-  it('1 語の英語が 2 回あっても、どれも ___ にする', () => {
-    expect(makeCloze('gg', 'gg gg wp')).toEqual({ cloze: '___ ___ wp', answer: 'gg' })
+  it('1 語の英語が 2 回あっても作らない', () => {
+    expect(makeCloze('gg', 'gg gg wp')).toBeNull()
+  })
+
+  it('重なって 2 回現れるときも作らない（go go と go go go!）', () => {
+    expect(makeCloze('go go', 'go go go!')).toBeNull()
   })
 
   it('1 語の英語', () => {

@@ -36,7 +36,7 @@ export const FILL_SYSTEM = [
   '- tone: 口調と使う場面（30 字以内）。特に無ければ空文字。',
   '- example_en: 短い例文（10 語以内）。example_ja: その訳。',
   '- note: スラングか、くだけた言い方か、など（30 字以内）。無ければ空文字。',
-  '- cloze と cloze_answer: kind が word のときだけ作る。出会った英文（無ければ example_en）の中で英語に当たる語を、1 語につき ___ 1 つに置き換えた文を cloze に、置き換えた語を文の中の語形のまま cloze_answer に入れる（例: gave up）。kind が phrase なら両方空文字。',
+  '- cloze と cloze_answer: kind が word のときだけ作る。出会った英文（無ければ example_en）の中で英語に当たる語を、1 語につき ___ 1 つに置き換えた文を cloze に、置き換えた語を文の中の語形のまま cloze_answer に入れる（例: gave up）。kind が phrase なら両方空文字。英語に当たる語が文の中に 2 回以上あるときも両方空文字。',
   '- 褒め言葉や前置きは書かない。',
 ].join('\n')
 
