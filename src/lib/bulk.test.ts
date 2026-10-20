@@ -137,11 +137,37 @@ describe('parseBulk（仕様書 8-3）', () => {
     expect('clozeAnswer' in words[0]).toBe(false)
   })
 
+  it('フレーズの cloze と cloze_answer は、片方だけ入っていても止めずに読み、穴埋めは入れない', () => {
+    const { words, skipped } = ok(
+      JSON.stringify([
+        full,
+        { ...full, term: 'my bad', kind: 'phrase', meaning: 'ごめん', cloze: '', cloze_answer: 'my bad' },
+      ]),
+    )
+    expect(skipped).toBe(0)
+    expect(words.map((w) => w.term)).toEqual(['give up', 'my bad'])
+    expect('cloze' in words[1]).toBe(false)
+    expect('clozeAnswer' in words[1]).toBe(false)
+  })
+
   it('```json の囲みが付いていても読む', () => {
     expect(ok('```json\n' + JSON.stringify([full]) + '\n```').words).toHaveLength(1)
   })
 
-  it('既にある語と、配列の中で先に出た語を読み飛ばし、数を返す（英語は normalizeEn、意味は normalizeJa で比べる）', () => {
+  it('``` の囲みが 2 つ以上あれば、何も読まずに止める', () => {
+    const two = JSON.stringify([
+      { term: 'carry', meaning: 'チームを勝たせる' },
+      { term: 'clutch', meaning: 'ここ一番で決める' },
+    ])
+    const one = JSON.stringify([{ term: 'nerf', meaning: '弱くする' }])
+    const r = parseBulk('```json\n' + two + '\n```\n\n```json\n' + one + '\n```', [], now)
+    expect(r).toEqual({
+      ok: false,
+      error: '``` の囲みが 2 つ以上あります。1 つの配列にまとめるか、1 つずつ貼ってください',
+    })
+  })
+
+  it('既にある語と、配列の中で先に出た語を読み飛ばし、数を返す（英語は normalizeEnKey、意味は normalizeJa で比べる）', () => {
     const existing: Word[] = [
       {
         id: 'e1',
@@ -170,6 +196,26 @@ describe('parseBulk（仕様書 8-3）', () => {
       ['nerf', '弱くする'],
     ])
     expect(skipped).toBe(2)
+  })
+
+  it('同じ語の見分けでは崩した言い方を展開しない（want to がある所に wanna を貼ると、別の語として読む）', () => {
+    const existing: Word[] = [
+      {
+        id: 'e1',
+        term: 'want to',
+        kind: 'word',
+        meaning: '〜したい',
+        accepted: ['〜したい'],
+        nearMiss: [],
+        acceptedEn: ['want to'],
+        needsAi: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]
+    const { words, skipped } = ok(JSON.stringify([{ term: 'wanna', meaning: '〜したい' }]), existing)
+    expect(skipped).toBe(0)
+    expect(words.map((w) => [w.term, w.meaning])).toEqual([['wanna', '〜したい']])
   })
 
   it('読み込んだ語は、貼った順に登録の日時が 1 ミリ秒ずつ新しくなる（最後の語が now。飛ばした語は数えない）', () => {

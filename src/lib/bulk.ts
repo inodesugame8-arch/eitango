@@ -2,7 +2,7 @@
 import { makeCloze } from './cloze.ts'
 import { newId } from './id.ts'
 import { sameJa } from './match.ts'
-import { normalizeEn, normalizeJa } from './normalize.ts'
+import { normalizeEnKey, normalizeJa } from './normalize.ts'
 import type { Kind, Word } from './types.ts'
 
 // 「Claude への頼み方をコピー」で入れる文。この後ろに単語を並べて Claude に渡す
@@ -107,7 +107,8 @@ function readItem(v: unknown, where: string): Item {
   }
   const cloze = optional(o, 'cloze', where)
   const clozeAnswer = optional(o, 'cloze_answer', where)
-  if ((cloze === undefined) !== (clozeAnswer === undefined)) {
+  // 穴埋めを使うのは単語・熟語だけ。フレーズは両方とも捨てるので、片方だけでも止めない
+  if ((kind ?? guessKind(term)) === 'word' && (cloze === undefined) !== (clozeAnswer === undefined)) {
     throw new FormatError(`${where}の cloze と cloze_answer は、両方入れるか両方空にしてください`)
   }
   return {
@@ -169,13 +170,22 @@ function toWord(item: Item, now: Date): Word {
   return word
 }
 
-// 同じ語 = 英語の正規化をかけた term と、日本語の正規化をかけた meaning が両方同じ
+// 同じ語 = 崩した言い方・短縮形を展開しない英語の正規化をかけた term と、日本語の正規化をかけた meaning が両方同じ
 function sameKey(term: string, meaning: string): string {
-  return `${normalizeEn(term)}\u0000${normalizeJa(meaning)}`
+  return `${normalizeEnKey(term)}\u0000${normalizeJa(meaning)}`
+}
+
+// ``` の囲みの数
+function countFences(text: string): number {
+  return [...text.matchAll(/```[^\n]*\n[\s\S]*?\n?```/g)].length
 }
 
 // 全部読み込むか、何も読み込まないか。既にある語と、配列の中で先に出た語は読み飛ばして数える
 export function parseBulk(text: string, existing: readonly Word[], now: Date): ParseBulkResult {
+  // 囲みが 2 つ以上あれば、最初の囲みだけを読んで残りを黙って捨てないよう、何も読まない
+  if (countFences(text) >= 2) {
+    return { ok: false, error: '``` の囲みが 2 つ以上あります。1 つの配列にまとめるか、1 つずつ貼ってください' }
+  }
   let raw: unknown
   try {
     raw = JSON.parse(stripFences(text))

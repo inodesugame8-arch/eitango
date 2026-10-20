@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeEn, normalizeJa } from './normalize.ts'
+import { normalizeEn, normalizeEnKey, normalizeJa } from './normalize.ts'
 
 describe('仕様書 7-1 の表の 5 例', () => {
   it('アキラメル。 → あきらめる', () => {
@@ -125,5 +125,13 @@ describe('normalizeEn', () => {
   it('展開した形と元の形が同じになる', () => {
     expect(normalizeEn("Don't")).toBe(normalizeEn('do not'))
     expect(normalizeEn('wanna win')).toBe(normalizeEn('want to win'))
+  })
+})
+
+describe('normalizeEnKey（まとめて読み込むときの同じ語の見分け。仕様書 8-3）', () => {
+  it('崩した言い方と短縮形は展開せず、それ以外は normalizeEn と同じにそろえる', () => {
+    expect(normalizeEnKey('wanna')).toBe('wanna')
+    expect(normalizeEnKey('Don’t give up!')).toBe('dont give up')
+    expect(normalizeEnKey('Café')).toBe('cafe')
   })
 })

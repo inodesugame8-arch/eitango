@@ -55,3 +55,18 @@ export function normalizeEn(text: string): string {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+// まとめて読み込むときの同じ語の見分け用（仕様書 8-3）。normalizeEn から崩した言い方と短縮形の展開を除いたもの
+// wanna と want to のような崩した形と元の形を、別の語として覚えられるように
+export function normalizeEnKey(text: string): string {
+  return text
+    .normalize('NFKC')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
