@@ -2,12 +2,14 @@
 import type { Card } from 'ts-fsrs'
 import { EXPORT_REMIND_DAYS, VOICE_RATES } from './config.ts'
 import { dayDiff, dayOf } from './day.ts'
+import { defaultSettings } from './db.ts'
 import { reviveCard } from './srs.ts'
 import type { BackupData, CardRecord, ReviewRecord, Settings, Word } from './types.ts'
 
 const APP = 'eitango'
 const VERSION = 1
 
+// lastExportAt は渡された値でなく now。ファイルが読み戻されるのは保存できたときだけなので、そのファイルにとっての最後の書き出しはそのファイル自身
 export function toBackupJson(data: BackupData, now: Date): string {
   // キーは書き出しに入れない（渡した設定に入っていても、項目を選んで写す）
   const s = data.settings
@@ -16,8 +18,8 @@ export function toBackupJson(data: BackupData, now: Date): string {
     newWordsPerDay: s.newWordsPerDay,
     voiceRate: s.voiceRate,
     mutedNoticeShown: s.mutedNoticeShown,
+    lastExportAt: now,
   }
-  if (s.lastExportAt !== undefined) settings.lastExportAt = s.lastExportAt
   return JSON.stringify({
     app: APP,
     version: VERSION,
@@ -182,19 +184,30 @@ function readReview(v: unknown, where: string): ReviewRecord {
   return review
 }
 
+// 読めれば（項目が今の決まりに合えば）その値、合わなければ fallback
+function orDefault<T>(read: () => T, fallback: T): T {
+  try {
+    return read()
+  } catch (e) {
+    if (e instanceof FormatError) return fallback
+    throw e
+  }
+}
+
+// 設定は、無い項目・今の決まりに合わない項目を既定値で補う（エラーにしない）。設定を変えた版に上げた後でも、
+// 前のバックアップから語・カード・記録を戻せるように（仕様書 9-3）。lastExportAt が日時でなければ無いものとする
 function readSettings(v: unknown): Omit<Settings, 'apiKey'> {
-  // 「settings の voiceRate」のように英字の後ろに空白を入れる
   const where = 'settings '
-  const o = obj(v, where)
+  const d = defaultSettings()
+  const o: Obj = isObj(v) ? v : {}
   const settings: Omit<Settings, 'apiKey'> = {
-    model: str(o, 'model', where),
-    newWordsPerDay: num(o, 'newWordsPerDay', where),
-    voiceRate: oneOf(o, 'voiceRate', where, VOICE_RATES),
-    mutedNoticeShown: bool(o, 'mutedNoticeShown', where),
+    model: orDefault(() => str(o, 'model', where), d.model),
+    newWordsPerDay: orDefault(() => num(o, 'newWordsPerDay', where), d.newWordsPerDay),
+    voiceRate: orDefault<number>(() => oneOf(o, 'voiceRate', where, VOICE_RATES), d.voiceRate),
+    mutedNoticeShown: orDefault(() => bool(o, 'mutedNoticeShown', where), d.mutedNoticeShown),
   }
-  if (o.lastExportAt !== undefined && o.lastExportAt !== null) {
-    settings.lastExportAt = date(o, 'lastExportAt', where)
-  }
+  const lastExportAt = orDefault<Date | undefined>(() => date(o, 'lastExportAt', where), undefined)
+  if (lastExportAt !== undefined) settings.lastExportAt = lastExportAt
   return settings
 }
 

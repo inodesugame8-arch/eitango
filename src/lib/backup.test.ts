@@ -109,7 +109,15 @@ describe('toBackupJson（仕様書 9-3 の形式）', () => {
     expect(obj.words[0].createdAt).toBe(created.toISOString())
     expect(obj.cards[0].card.due).toBe(data().cards[0].card.due.toISOString())
     expect(obj.reviews[0].at).toBe(t2.toISOString())
-    expect(obj.settings.lastExportAt).toBe(t1.toISOString())
+    expect(obj.settings.lastExportAt).toBe(exportedAt.toISOString())
+  })
+
+  it('渡した lastExportAt が無くても、書き出しの lastExportAt は now になる（戻すと「最後の書き出し」がそのファイルの日時になる）', () => {
+    const d = data()
+    delete d.settings.lastExportAt
+    const obj = JSON.parse(toBackupJson(d, exportedAt))
+    expect(obj.settings.lastExportAt).toBe(exportedAt.toISOString())
+    expect(parseOk(toBackupJson(d, exportedAt)).settings.lastExportAt).toEqual(exportedAt)
   })
 
   it('Gemini のキーは書き出しに入れない（渡した設定にあっても）', () => {
@@ -124,7 +132,9 @@ describe('toBackupJson（仕様書 9-3 の形式）', () => {
 describe('parseBackup', () => {
   it('書き出した JSON を読むと元に戻り、日時は Date に戻る', () => {
     const back = parseOk(toBackupJson(data(), exportedAt))
-    expect(back).toEqual(data())
+    // lastExportAt だけは、渡した値ではなく書き出しの日時になる
+    const d = data()
+    expect(back).toEqual({ ...d, settings: { ...d.settings, lastExportAt: exportedAt } })
     expect(back.words[0].createdAt).toBeInstanceOf(Date)
     expect(back.words[0].updatedAt).toBeInstanceOf(Date)
     expect(back.cards[0].card.due).toBeInstanceOf(Date)
@@ -174,8 +184,53 @@ describe('parseBackup', () => {
     expect(errorOf(edited((o) => (o.reviews[0].day = '2026/10/20')))).toBe(
       'reviews の 1 番目の day が YYYY-MM-DD ではありません',
     )
-    expect(errorOf(edited((o) => (o.settings.voiceRate = 2.1)))).toBe('settings の voiceRate が違います（2.1）')
     expect(errorOf(edited((o) => (o.reviews = {})))).toBe('reviews が配列ではありません')
+  })
+
+  it('設定の項目が無いか今の決まりに合わなければ、既定値で補って読める', () => {
+    const settingsOf = (change: (obj: Record<string, any>) => void) => parseOk(edited(change)).settings
+    expect(settingsOf((o) => (o.settings.voiceRate = 2.1)).voiceRate).toBe(1)
+    expect(settingsOf((o) => delete o.settings.mutedNoticeShown).mutedNoticeShown).toBe(false)
+    expect(settingsOf((o) => (o.settings.model = 123)).model).toBe('gemini-3.5-flash-lite')
+    expect(settingsOf((o) => (o.settings.newWordsPerDay = '7')).newWordsPerDay).toBe(5)
+    // lastExportAt が日時でなければ、無いものとする
+    expect('lastExportAt' in settingsOf((o) => (o.settings.lastExportAt = 'きのう'))).toBe(false)
+    // 合わない項目だけを補い、ほかの項目はファイルのまま
+    expect(settingsOf((o) => (o.settings.voiceRate = 2.1))).toEqual({
+      model: 'gemini-3.5-flash-lite',
+      newWordsPerDay: 5,
+      voiceRate: 1,
+      lastExportAt: exportedAt,
+      mutedNoticeShown: true,
+    })
+    // settings そのものが無い・オブジェクトでないときも既定値
+    const defaults = { model: 'gemini-3.5-flash-lite', newWordsPerDay: 5, voiceRate: 1, mutedNoticeShown: false }
+    expect(settingsOf((o) => delete o.settings)).toEqual(defaults)
+    expect(settingsOf((o) => (o.settings = 'x'))).toEqual(defaults)
+    expect(settingsOf((o) => (o.settings = []))).toEqual(defaults)
+  })
+
+  it('設定が合わなくても、語・カード・記録は今のまま読め、設定だけ既定値になる', () => {
+    const back = parseOk(
+      edited((o) => {
+        o.settings.voiceRate = 2.1
+        delete o.settings.mutedNoticeShown
+      }),
+    )
+    const d = data()
+    expect(back.words).toEqual(d.words)
+    expect(back.cards).toEqual(d.cards)
+    expect(back.reviews).toEqual(d.reviews)
+    expect(back.settings).toEqual({ ...d.settings, voiceRate: 1, mutedNoticeShown: false, lastExportAt: exportedAt })
+    // 語・カード・記録の誤りは、設定が合わなくても今のままエラー
+    expect(
+      errorOf(
+        edited((o) => {
+          delete o.settings
+          o.words[1].createdAt = 'きのう'
+        }),
+      ),
+    ).toBe('words の 2 番目の createdAt が日時ではありません')
   })
 
   it('読み込むファイルにキーがあっても読まない', () => {
