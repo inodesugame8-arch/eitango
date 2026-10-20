@@ -52,6 +52,8 @@ function simulate(opt) {
     sibling = true, // 同じ語の 2 枚を同じ日に出さない
     learningP = 'R', // 'R': 2 回目以降は想起確率 / 'firstP': Learning 中（初日の学習ステップ）も firstP
     hardReshow = false, // true: 復習カードで △(Hard) のとき、その日のうちにもう 1 問出す（FSRS には渡さない＝評価は Hard のまま。問題数だけ足す）
+    closeShare = 1, // Hard のうち △ の割合（アプリは遅い ○ も Hard にするが、練習は △ のときだけ入れる）。1 なら Hard はすべて △
+    stepP = null, // 学習中・再学習中のカードの正答率。null なら R（同じ日なので 1 ＝同じ日にもう一度出した分は必ず正解）
   } = opt
 
   const f = fsrs({
@@ -161,8 +163,13 @@ function simulate(opt) {
         item = l.item
       }
       const c = item.card
+      const inStep = c.state === State.Learning || c.state === State.Relearning
       const p =
-        c.state === State.New || (learningP === 'firstP' && c.state === State.Learning) ? firstP : R(c, now)
+        c.state === State.New || (learningP === 'firstP' && c.state === State.Learning)
+          ? firstP
+          : stepP != null && inStep
+            ? stepP
+            : R(c, now)
       const correct = rng() < p
       const rating = correct ? (rng() < hardShare ? Rating.Hard : Rating.Good) : Rating.Again
       if (startedAsReview.has(item)) {
@@ -175,7 +182,8 @@ function simulate(opt) {
       if (item.dir === 'EJ' && item.word.ejFirstDay === null) item.word.ejFirstDay = d
       count++
       now += SEC_PER_Q * 1000
-      if (hardReshow && c.state === State.Review && rating === Rating.Hard) {
+      // Hard のうち △ だったかは closeShare が 1 より小さいときだけ乱数で決める（1 なら乱数を引かない＝今までの出力を変えない）
+      if (hardReshow && c.state === State.Review && rating === Rating.Hard && (closeShare >= 1 || rng() < closeShare)) {
         count++ // △ の再出題（練習のみ。時間も 20 秒足す）
         now += SEC_PER_Q * 1000
       }
@@ -244,6 +252,11 @@ const variants = [
   },
   // 6章の「△の語は少し後にもう一度出す」を問題数に足した場合（main の条件＋△の再出題）
   { name: 'main＋△の再出題（復習カードの Hard を同じ日にもう 1 問）', extra: { threshold: 80, rMode: 'calendar', hardReshow: true } },
+  // 同じ日にもう一度出した分（学習中・再学習中）も 7 割しか正解しない場合（main の条件＋stepP）
+  {
+    name: 'main＋学習中・再学習中の正答率0.7（80問ルールあり・R=暦日差）',
+    extra: { threshold: 80, rMode: 'calendar', stepP: 0.7 },
+  },
 ]
 
 const research = {
@@ -287,7 +300,7 @@ if (process.argv.includes('--json')) {
           r.days24to30.toFixed(1),
           r.days61to90.toFixed(1),
           r.minutesPerDay61to90.toFixed(1),
-          rs.map((x) => (x == null ? '-' : x)).join('/'),
+          rs ? rs.map((x) => (x == null ? '-' : x)).join('/') : '-', // 下調べに無い条件は '-'
           r.perSeed61to90.map((x) => x.toFixed(1)).join(','),
           (r.reviewRetention * 100).toFixed(1) + '%',
           r.blockedDays.toFixed(1),
@@ -299,7 +312,7 @@ if (process.argv.includes('--json')) {
         ].join(' | '),
       )
     }
-    console.log('1〜10日目の問題数（3種の平均）')
+    console.log(`1〜10日目の問題数（${SEEDS.length}種の平均）`)
     for (const r of v.rows) console.log(`  ${r.cond.label}: ${r.first10.join(', ')}`)
   }
 }
