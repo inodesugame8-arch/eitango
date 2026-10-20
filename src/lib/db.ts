@@ -78,6 +78,24 @@ export async function putWord(db: EitangoDB, word: Word): Promise<void> {
   await db.words.put(word)
 }
 
+// 今の行を読んでから変えて書く（1 つのトランザクション）。AI で補う途中や編集の途中に一覧で消した語・直した語を、
+// 押した時点の古い写しで丸ごと上書きしない（消した語をカード無しで戻さない）ための口。
+// 行が無い、または change が undefined を返したら書かずに false
+export async function updateWord(
+  db: EitangoDB,
+  id: string,
+  change: (cur: Word) => Word | undefined,
+): Promise<boolean> {
+  return db.transaction('rw', db.words, async () => {
+    const cur = await db.words.get(id)
+    if (!cur) return false
+    const next = change(cur)
+    if (next === undefined) return false
+    await db.words.put(next)
+    return true
+  })
+}
+
 // 語とカード 2 枚と、その語のもう一度出す予定を消す。解答記録は残す（仕様書 9-4）
 export async function deleteWord(db: EitangoDB, wordId: string): Promise<void> {
   await db.transaction('rw', db.words, db.cards, db.kv, async () => {
@@ -93,17 +111,24 @@ export async function deleteWord(db: EitangoDB, wordId: string): Promise<void> {
   })
 }
 
-// カード・解答記録・予定（・語）を 1 つのトランザクションで書く。判定を直したときも同じ id で上書き
+// カード・解答記録・予定（・語）を 1 つのトランザクションで書く。判定を直したときも同じ id で上書き。
+// 語は wordChange を今の行に当てて書き、その語を返す（学習を始めたときの古い写しで、AI で補った内容を消さないため）。
+// wordChange が無い、または語の行が無ければ、語は書かずに undefined
 export async function saveAnswer(
   db: EitangoDB,
-  args: { card: CardRecord; review: ReviewRecord; session: SessionState; word?: Word },
-): Promise<void> {
-  const { card, review, session, word } = args
-  await db.transaction('rw', db.cards, db.reviews, db.kv, db.words, async () => {
+  args: { card: CardRecord; review: ReviewRecord; session: SessionState; wordChange?: (cur: Word) => Word },
+): Promise<Word | undefined> {
+  const { card, review, session, wordChange } = args
+  return db.transaction('rw', db.cards, db.reviews, db.kv, db.words, async () => {
     await db.cards.put(card)
     await db.reviews.put(review)
     await db.kv.put({ key: SESSION_KEY, value: session })
-    if (word) await db.words.put(word)
+    if (!wordChange) return undefined
+    const cur = await db.words.get(card.wordId)
+    if (!cur) return undefined
+    const next = wordChange(cur)
+    await db.words.put(next)
+    return next
   })
 }
 

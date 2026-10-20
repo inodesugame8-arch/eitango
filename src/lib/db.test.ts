@@ -18,6 +18,7 @@ import {
   saveAnswer,
   saveSession,
   saveSettings,
+  updateWord,
 } from './db.ts'
 import { newSession } from './session.ts'
 import { newCard, reviewCard } from './srs.ts'
@@ -191,6 +192,71 @@ describe('語の保存', () => {
     expect(await db.words.count()).toBe(0)
     expect(await getSession(db)).toBeUndefined()
   })
+
+  it('1 つのトランザクション: addWord でカードの書き込みに失敗したら、語も残らない', async () => {
+    const db = makeDb()
+    const [c] = cardsForWord('w9', now)
+    await db.cards.add(c)
+    await expect(addWord(db, word('w9'), now)).rejects.toThrow()
+    expect(await db.words.count()).toBe(0)
+  })
+
+  it('1 つのトランザクション: deleteWord で予定を直すところで失敗したら、何も消えない', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), now)
+    await db.kv.put({ key: 'session', value: { ...newSession('2026-10-20'), pending: null } })
+    await expect(deleteWord(db, 'w1')).rejects.toThrow()
+    const all = await loadAll(db)
+    expect(all.words.map((w) => w.id)).toEqual(['w1'])
+    expect(all.cards.map((c) => c.id).sort()).toEqual(['w1:en-ja', 'w1:ja-en'])
+  })
+})
+
+describe('updateWord（今の行を読んでから変える）', () => {
+  it('消した語には書かず false を返し、語もカードも作り直さない', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), now)
+    await deleteWord(db, 'w1')
+    expect(await updateWord(db, 'w1', (cur) => ({ ...cur, meaning: 'やめる' }))).toBe(false)
+    const all = await loadAll(db)
+    expect(all.words).toEqual([])
+    expect(all.cards).toEqual([])
+  })
+
+  it('change は今の行に当たる（古い写しではなく、間に putWord した値）', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), now)
+    await putWord(db, word('w1', { meaning: 'やめる', updatedAt: now }))
+    const seen: Word[] = []
+    const ok = await updateWord(db, 'w1', (cur) => {
+      seen.push(cur)
+      return { ...cur, accepted: [...cur.accepted, '投げ出す'] }
+    })
+    expect(ok).toBe(true)
+    expect(seen).toEqual([word('w1', { meaning: 'やめる', updatedAt: now })])
+    expect(await db.words.get('w1')).toEqual(
+      word('w1', { meaning: 'やめる', updatedAt: now, accepted: ['諦める', 'あきらめる', '投げ出す'] }),
+    )
+  })
+
+  it('change が undefined を返したら書かずに false', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), now)
+    expect(await updateWord(db, 'w1', () => undefined)).toBe(false)
+    expect(await db.words.get('w1')).toEqual(word('w1'))
+  })
+
+  it('deleteWord と同時に走らせても、消した語を戻さない（読んでから書くまでが 1 つのトランザクション）', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), now)
+    await Promise.all([
+      updateWord(db, 'w1', (cur) => ({ ...cur, needsAi: false, updatedAt: now })),
+      deleteWord(db, 'w1'),
+    ])
+    const all = await loadAll(db)
+    expect(all.words).toEqual([])
+    expect(all.cards).toEqual([])
+  })
 })
 
 describe('saveAnswer', () => {
@@ -209,8 +275,12 @@ describe('saveAnswer', () => {
       seq: 1,
       pending: [{ cardId: card.id, reason: 'step', seq: 0, dueAt: card.card.due }],
     }
-    const w = word('w1', { accepted: ['諦める', 'あきらめる', '投げ出す'], updatedAt: now })
-    await saveAnswer(db, { card, review: review('r1', before), session, word: w })
+    await saveAnswer(db, {
+      card,
+      review: review('r1', before),
+      session,
+      wordChange: (cur) => ({ ...cur, accepted: [...cur.accepted, '投げ出す'], updatedAt: now }),
+    })
     const all = await loadAll(db)
     const savedCard = all.cards.find((c) => c.id === card.id)
     expect(savedCard).toEqual(card)
@@ -224,12 +294,46 @@ describe('saveAnswer', () => {
     expect(s?.pending[0].dueAt).toBeInstanceOf(Date)
   })
 
-  it('語を渡さなければ語は書かない', async () => {
+  it('wordChange を渡さなければ語は書かず、undefined を返す', async () => {
     const db = makeDb()
     await addWord(db, word('w1'), created)
     const { card, before } = solved()
-    await saveAnswer(db, { card, review: review('r1', before), session: newSession('2026-10-20') })
+    const got = await saveAnswer(db, { card, review: review('r1', before), session: newSession('2026-10-20') })
+    expect(got).toBeUndefined()
     expect(await db.words.get('w1')).toEqual(word('w1'))
+  })
+
+  it('語の行が無ければ wordChange を当てずに undefined を返す（カードと解答記録は書く）', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), created)
+    const { card, before } = solved()
+    await deleteWord(db, 'w1')
+    const got = await saveAnswer(db, {
+      card,
+      review: review('r1', before),
+      session: newSession('2026-10-20'),
+      wordChange: (cur) => ({ ...cur, accepted: [...cur.accepted, '投げ出す'] }),
+    })
+    expect(got).toBeUndefined()
+    const all = await loadAll(db)
+    expect(all.words).toEqual([])
+    expect(all.reviews.map((r) => r.id)).toEqual(['r1'])
+  })
+
+  it('wordChange は今の行に当たる（前に putWord した値に当てて書き、その語を返す）', async () => {
+    const db = makeDb()
+    await addWord(db, word('w1'), created)
+    await putWord(db, word('w1', { meaning: 'やめる', updatedAt: now }))
+    const { card, before } = solved()
+    const got = await saveAnswer(db, {
+      card,
+      review: review('r1', before),
+      session: newSession('2026-10-20'),
+      wordChange: (cur) => ({ ...cur, accepted: [...cur.accepted, '投げ出す'] }),
+    })
+    const expected = word('w1', { meaning: 'やめる', updatedAt: now, accepted: ['諦める', 'あきらめる', '投げ出す'] })
+    expect(got).toEqual(expected)
+    expect(await db.words.get('w1')).toEqual(expected)
   })
 
   it('判定を直したときは、同じ解答記録の id で上書きする', async () => {
