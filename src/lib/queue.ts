@@ -14,6 +14,7 @@ export interface TodayInput {
   newPerDay: number
   pendingCardIds: ReadonlySet<string> // もう一度出す予定に入っているカード（今日の並びから除く）
   extraNew?: number // 「新しい問題を足す」で増やした分（既定 0）。80 枚の決まりは見ない（仕様書 6-9）
+  queuedCardIds?: ReadonlySet<string> // 「先取りで復習する」で並びに足し、まだ解いていないカード。その語の新しい日→英は選ばない（仕様書 6-3 の 2・6-9）
 }
 
 export interface TodayPlan {
@@ -36,6 +37,7 @@ function other(direction: Direction): Direction {
 export function buildToday(input: TodayInput): TodayPlan {
   const { words, cards, reviews, now, newPerDay, pendingCardIds } = input
   const extraNew = input.extraNew ?? 0
+  const queued = input.queuedCardIds ?? new Set<string>()
   // 1. 今日の解答記録（練習は除く）
   const today = dayOf(now)
   const todayReviews = reviews.filter((r) => r.day === today && !r.practice)
@@ -43,7 +45,6 @@ export function buildToday(input: TodayInput): TodayPlan {
 
   // 2. 今日初めて解いた新しいカード
   const newTodayReviews = todayReviews.filter((r) => r.before.state === State.New)
-  const newToday = new Set(newTodayReviews.map((r) => r.cardId))
   const newTodayCount = (direction: Direction): number =>
     new Set(newTodayReviews.filter((r) => r.direction === direction).map((r) => r.cardId)).size
 
@@ -56,11 +57,11 @@ export function buildToday(input: TodayInput): TodayPlan {
     return s !== undefined && solvedToday.has(s.id)
   }
 
-  // 3. 今日の復習の候補（出題日はアプリの日で比べる）
+  // 3. 今日の復習の候補: New でなく、出題日のアプリの日が今日以前のカード。今日初めて解いた新しいカードも入れる
+  //    （朝 4 時をまたいで答えたときも、その日の並びか学習ステップの予定に入るように。今日すでに解いているので、
+  //    80 枚の決まりで数える枚数と、今日まだ解いていない復習の枚数には数えない。仕様書 6-3・6-4）
   // 4. 兄弟カード: もう片方を今日解いていれば外す。両方が候補なら英→日を残す
-  const due = cards.filter(
-    (c) => c.card.state !== State.New && dueDay(c.card) <= today && !newToday.has(c.id) && !siblingSolved(c),
-  )
+  const due = cards.filter((c) => c.card.state !== State.New && dueDay(c.card) <= today && !siblingSolved(c))
   const dueIds = new Set(due.map((c) => c.id))
   const candidates = due.filter((c) => {
     if (c.direction !== 'ja-en') return true
@@ -72,10 +73,11 @@ export function buildToday(input: TodayInput): TodayPlan {
   // 5. 80 枚の決まりで数える枚数 = 候補のうち今日まだ解いていないカード + 今日解いた復習。
   //    今日解いた復習は、その日に最初に解く前の出題日が今日以前のカードだけ（今日初めて解いた新しいカードと、
   //    「先取りで復習する」で解いたカードは数えない。仕様書 6-3 の 4・6-9）
+  //    その日の最初の記録は、解いた時刻でなく解く前の回数の少ない方で決める（端末の時計を戻しても変わらない）
   const firstToday = new Map<string, ReviewRecord>()
   for (const r of todayReviews) {
     const f = firstToday.get(r.cardId)
-    if (f === undefined || r.at.getTime() < f.at.getTime()) firstToday.set(r.cardId, r)
+    if (f === undefined || r.before.reps < f.before.reps) firstToday.set(r.cardId, r)
   }
   const counted = new Set<string>()
   for (const c of candidates) if (!solvedToday.has(c.id)) counted.add(c.id)
@@ -138,8 +140,9 @@ export function buildToday(input: TodayInput): TodayPlan {
         if (s === undefined || s.card.state === State.New) return false
         const first = firstAt.get(s.id)
         if (first !== undefined && dayOf(first) >= today) return false
-        // 4 で外れたもの（英→日を今日解いた・英→日が今日の候補）を除いてから選ぶ
-        return !solvedToday.has(s.id) && !candidateIds.has(s.id)
+        // 4 で外れたもの（英→日を今日解いた・英→日が今日の候補）と、英→日を「先取りで復習する」で並びに足した語を
+        // 除いてから選ぶ
+        return !solvedToday.has(s.id) && !candidateIds.has(s.id) && !queued.has(s.id)
       })
       .sort(
         (a, b) =>

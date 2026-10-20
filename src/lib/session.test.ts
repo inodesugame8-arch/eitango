@@ -291,6 +291,17 @@ describe('recordAnswer（仕様書 6-4 の表）', () => {
     expect(r.session.answers).toBe(1)
   })
 
+  it('3 時 52 分に Review の状態のカードを × で答え、出題日が 4 時 02 分（次のアプリの日）になったら again を足さない（最後の 1 枚なら今日の分は終わり）', () => {
+    const t = at(2026, 10, 21, 3, 52)
+    const r = answer(newSession('2026-10-20'), 'a:en-ja', reviewState(), t, 'wrong')
+    expect(r.card.state).toBe(State.Relearning)
+    expect(r.card.due).toEqual(at(2026, 10, 21, 4, 2))
+    expect(r.session.pending).toEqual([])
+    expect(r.session.seq).toBe(0)
+    expect(r.session.answers).toBe(1)
+    expect(pickNext(r.session, [], t)).toEqual({ kind: 'done' })
+  })
+
   it('○ で出題日が明日以降: 何も足さない', () => {
     const r = answer(newSession(DAY), 'a:en-ja', reviewState(), now, 'correct')
     expect(r.session.pending).toEqual([])

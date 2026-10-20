@@ -94,6 +94,22 @@ describe('applyAppeal「おしいにする」（△ に直す）', () => {
     expect(w.acceptedEn).toEqual(word().acceptedEn)
   })
 
+  it('英→日: 紛らわしい誤訳にある答えなら、紛らわしい誤訳からも外す（次の AI の判定に不正解にすべき訳として渡さない）', () => {
+    const w = applyAppeal(word(), 'en-ja', '断念する。', 'close', now)
+    expect(w.nearMiss).toEqual(['負ける'])
+    expect(w.accepted).toEqual(word().accepted)
+    expect(w.acceptedEn).toEqual(word().acceptedEn)
+  })
+
+  it('英→日: △ → × → △ と直し直すと、紛らわしい誤訳は元に戻る', () => {
+    const close = applyAppeal(word(), 'en-ja', '投げ出す', 'close', now)
+    const wrong = applyAppeal(close, 'en-ja', '投げ出す', 'wrong', now)
+    expect(wrong.nearMiss).toEqual(['負ける', '断念する', '投げ出す'])
+    const back = applyAppeal(wrong, 'en-ja', '投げ出す', 'close', now)
+    expect(back.nearMiss).toEqual(word().nearMiss)
+    expect(back.accepted).toEqual(word().accepted)
+  })
+
   it('英→日: 外した答えは、次は照合で ○ にならない（AI が判定する）', () => {
     expect(matchLocal(word(), 'en-ja', 'やめる')).toBe(true)
     const w = applyAppeal(word(), 'en-ja', 'やめる', 'close', now)

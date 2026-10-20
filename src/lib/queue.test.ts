@@ -220,6 +220,22 @@ describe('buildToday: 80 枚の決まり（仕様書 6-3 の 4）', () => {
     expect(plan.allowNew).toBe(true)
     expect(plan.newRemaining).toBe(5)
   })
+
+  it('その日に最初に解いた記録は、解いた時刻でなく解く前の回数で決める（端末の時計を戻して解き直しても、先取りのカードを数えない）', () => {
+    const w = world()
+    addReviewWords(w, 'r', 79, at(2026, 10, 20, 9))
+    const [a] = addReviewWords(w, 'a', 1, at(2026, 10, 25, 9))
+    // 10 時に先取りで × と答え（解く前の回数は 3）、時計を 9 時 05 分に戻してもう一度解いた（解く前の回数は 4・出題日は今日）
+    solve(w, cid(a, 'en-ja'), at(2026, 10, 20, 10, 0), 1)
+    solve(w, cid(a, 'en-ja'), at(2026, 10, 20, 9, 5), 3)
+    expect(w.reviews.map((r) => r.before.reps)).toEqual([3, 4])
+    expect(dayOf(w.reviews[1].before.due)).toBe('2026-10-20')
+    addNewWords(w, 'n', 5, at(2026, 10, 1, 12))
+    const plan = buildToday(input(w, now))
+    expect(plan.reviewTotal).toBe(79)
+    expect(plan.allowNew).toBe(true)
+    expect(plan.newRemaining).toBe(5)
+  })
 })
 
 describe('buildToday: 兄弟カード（仕様書 6-3 の 2）', () => {
@@ -280,9 +296,10 @@ describe('buildToday: 新しい問題（仕様書 6-3 の 3）', () => {
     addWord(w, 'b', at(2026, 10, 2))
     addWord(w, 'a', at(2026, 10, 2))
     addWord(w, 'y', at(2026, 10, 1))
-    const plan = buildToday(input(w, now, { newPerDay: 3 }))
-    expect(plan.queue.sort()).toEqual(['a:en-ja', 'b:en-ja', 'y:en-ja'])
-    expect(plan.newRemaining).toBe(3)
+    // N = 2 なら、10 月 2 日の同じ時刻の a と b の間で切れる
+    const plan = buildToday(input(w, now, { newPerDay: 2 }))
+    expect(plan.queue.sort()).toEqual(['a:en-ja', 'y:en-ja'])
+    expect(plan.newRemaining).toBe(2)
   })
 
   it('今日すでに出した新しいカードの数を引く（英→日）', () => {
@@ -332,6 +349,17 @@ describe('buildToday: 新しい問題（仕様書 6-3 の 3）', () => {
     // 選ぶ順は英→日を初めて解いた順: N = 1 なら mid
     const one = buildToday(input(w, now, { newPerDay: 1 }))
     expect(one.queue.filter((id) => id.endsWith(':ja-en'))).toEqual(['mid:ja-en'])
+  })
+
+  it('新しい日→英は、英→日を初めて解いた日が今日より後の語（端末の時計を戻したとき）も出さない', () => {
+    const w = world()
+    addWord(w, 'p', at(2026, 9, 1))
+    // 英→日を 10 月 21 日 10 時に解いた記録がある（解答記録の日は 10 月 21 日。今日の解答記録には入らない）
+    solve(w, 'p:en-ja', at(2026, 10, 21, 10), 3)
+    setReview(w, 'p:en-ja', at(2026, 10, 30), at(2026, 10, 21, 10))
+    expect(w.reviews[0].day).toBe('2026-10-21')
+    const plan = buildToday(input(w, now))
+    expect(plan.queue).not.toContain('p:ja-en')
   })
 
   it('英→日が New のままの語の日→英は出さない', () => {
@@ -471,6 +499,51 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
     expect(plan.reviewRemaining).toBe(1)
   })
 
+  // 新しいカードの問題を 10 月 21 日 3 時 58 分（アプリの日は 10 月 20 日）に出し、朝 4 時をまたいだ 4 時 01 分に答えた
+  // （解答記録の日は 10 月 21 日・解く前は New）。前の日の予定は捨てられ、pendingCardIds には無い。今日の復習は 2 枚
+  function crossedWorld(rating: RatingValue): World {
+    const w = world()
+    addReviewWords(w, 'r', 2, at(2026, 10, 21, 9))
+    addWord(w, 'n', at(2026, 10, 1, 12))
+    solve(w, 'n:en-ja', at(2026, 10, 21, 4, 1), rating)
+    return w
+  }
+
+  it('今日初めて解いた新しいカードで、学習中・出題日が今より後なら stepEntries に入る（80 枚と、今日まだ解いていない復習には数えない）', () => {
+    const w = crossedWorld(3)
+    const due = record(w, 'n:en-ja').card.due
+    expect(record(w, 'n:en-ja').card.state).toBe(State.Learning)
+    expect(dayOf(due)).toBe('2026-10-21')
+    const plan = buildToday(input(w, at(2026, 10, 21, 4, 2)))
+    expect(plan.reviewTotal).toBe(2)
+    expect(plan.reviewRemaining).toBe(2)
+    expect(plan.queue).not.toContain('n:en-ja')
+    expect(plan.stepEntries).toEqual([{ cardId: 'n:en-ja', dueAt: due }])
+  })
+
+  it('今日初めて解いた新しいカードで、出題日が今以前なら並びに入る（80 枚と、今日まだ解いていない復習には数えない）', () => {
+    const w = crossedWorld(1)
+    const due = record(w, 'n:en-ja').card.due
+    expect(record(w, 'n:en-ja').card.state).toBe(State.Learning)
+    const plan = buildToday(input(w, new Date(due.getTime() + MIN)))
+    expect(plan.reviewTotal).toBe(2)
+    expect(plan.reviewRemaining).toBe(2)
+    expect(plan.stepEntries).toEqual([])
+    expect(plan.queue).toContain('n:en-ja')
+  })
+
+  it('今日初めて解いた新しいカードも、もう一度出す予定に入っていれば並びにも stepEntries にも入らない', () => {
+    const w = crossedWorld(3)
+    const due = record(w, 'n:en-ja').card.due
+    for (const t of [at(2026, 10, 21, 4, 2), new Date(due.getTime() + MIN)]) {
+      const plan = buildToday(input(w, t, { pendingCardIds: new Set(['n:en-ja']) }))
+      expect(plan.queue).not.toContain('n:en-ja')
+      expect(plan.stepEntries).toEqual([])
+      expect(plan.reviewTotal).toBe(2)
+      expect(plan.reviewRemaining).toBe(2)
+    }
+  })
+
   it('練習の解答記録は今日解いた数に入れない', () => {
     const w = world()
     addReviewWords(w, 'r', 1, at(2026, 10, 20, 8))
@@ -549,6 +622,27 @@ describe('buildToday: もっとやる の「新しい問題を足す」（仕様
     const plan = buildToday(input(w, now, { extraNew: 5 }))
     expect(plan.newRemaining).toBe(5)
     expect(plan.queue.filter((id) => list.slice(5, 10).map((x) => cid(x, 'en-ja')).includes(id))).toHaveLength(5)
+  })
+
+  it('「先取りで復習する」で並びに足した英→日の語は、新しい日→英に選ばず、次に古い候補で埋める（同じ語の 2 枚は 1 日に 1 枚。仕様書 6-3 の 2）', () => {
+    const w = world()
+    // x・a・b・c は英→日を 10 月 9 日・10 日・11 日・12 日に初めて解いた語（英→日の出題日は 10 月 25 日、日→英は New）
+    for (const [i, id] of ['x', 'a', 'b', 'c'].entries()) {
+      addWord(w, id, at(2026, 10, 1, 12, i))
+      solve(w, `${id}:en-ja`, at(2026, 10, 9 + i, 20), 3)
+      setReview(w, `${id}:en-ja`, at(2026, 10, 25), at(2026, 10, 9 + i, 20))
+    }
+    // 今日の新しい日→英（1 日の新しい語の数は 1）は x で出し終えた
+    solve(w, 'x:ja-en', at(2026, 10, 20, 9), 4)
+    expect(buildToday(input(w, now, { newPerDay: 1 })).queue).toEqual([])
+    // 先取りが無ければ、足した 2 枚は a・b
+    expect(buildToday(input(w, now, { newPerDay: 1, extraNew: 2 })).queue.sort()).toEqual(['a:ja-en', 'b:ja-en'])
+    // 先取りで a の英→日を並びに足してから「新しい問題を足す」と、a の日→英は選ばず c で埋める
+    const plan = buildToday(
+      input(w, now, { newPerDay: 1, extraNew: 2, queuedCardIds: new Set(['a:en-ja']) }),
+    )
+    expect(plan.queue.sort()).toEqual(['b:ja-en', 'c:ja-en'])
+    expect(plan.newRemaining).toBe(2)
   })
 })
 

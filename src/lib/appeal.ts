@@ -16,9 +16,10 @@ function withAdded(list: readonly string[], answer: string, same: Same): string[
   return list.some((t) => same(text, t)) ? [...list] : [...list, text]
 }
 
-// 「正解にする」: 紛らわしい誤訳から外してから、英→日は許容訳・日→英は許容する英語に加える。
+// 「正解にする」: 英→日は紛らわしい誤訳から外してから許容訳に加え、日→英は許容する英語に加える（紛らわしい誤訳は日本語の一覧なので触らない）。
 // 「不正解にする」: 許容訳（日→英は許容する英語）から外してから、英→日は紛らわしい誤訳に加える。
-// 「おしいにする」: 許容訳（日→英は許容する英語）から外す。紛らわしい誤訳には加えない（次は AI が判定する）。
+// 「おしいにする」: 英→日は許容訳と紛らわしい誤訳から外し、日→英は許容する英語から外す。紛らわしい誤訳には加えない
+// （次は AI が判定する）。
 // どれも updatedAt を now にした新しい Word を返す
 export function applyAppeal(
   word: Word,
@@ -40,6 +41,7 @@ export function applyAppeal(
       nearMiss = withAdded(nearMiss, answer, sameJa)
     } else {
       accepted = without(accepted, answer, sameJa)
+      nearMiss = without(nearMiss, answer, sameJa)
     }
   } else if (!empty) {
     // 日→英。紛らわしい誤訳は日本語の一覧なので、英語の答えとは比べない
