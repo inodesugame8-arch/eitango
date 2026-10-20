@@ -33,16 +33,20 @@ function setOpt(word: Word, key: 'tone' | 'exampleEn' | 'exampleJa' | 'note' | '
 
 // new: 登録の確認の画面に出す値（本人が入れた意味があればそれを使い、accepted に meaning を必ず含める）
 // supplement: AI で補う（意味と種類は変えない。一覧は足すだけ。空の項目だけ埋める。needsAi を false に）。
-// 許容訳と紛らわしい誤訳の、もう片方にある訳は足さない（判定を直した結果を AI が戻さないように。仕様書 8-4）
+// 許容訳と紛らわしい誤訳の、もう片方にある訳は足さない（× に直して紛らわしい誤訳に入れた訳を、AI が許容訳に
+// 戻さないように。英→日の △・日→英の ×・△ に直した答えは一覧に残らないので守れない。仕様書 8-4）
 export function applyFill(word: Word, fill: FillResult, mode: 'new' | 'supplement', now: Date): Word {
+  const notIn = (list: readonly string[]) => (t: string): boolean => !list.some((x) => sameJa(x, t))
   if (mode === 'new') {
     const meaning = empty(word.meaning) ? fill.meaning : word.meaning.trim()
+    const accepted = addJa(addJa([], fill.accepted), [meaning])
     const out: Word = {
       ...word,
       kind: fill.kind,
       meaning,
-      accepted: addJa(addJa([], fill.accepted), [meaning]),
-      nearMiss: addJa([], fill.nearMiss),
+      accepted,
+      // 許容訳にある訳は紛らわしい誤訳に入れない（supplement と同じ決まり）
+      nearMiss: addJa([], fill.nearMiss.filter(notIn(accepted))),
       acceptedEn: addEn([], fill.acceptedEn),
       needsAi: false,
       updatedAt: now,
@@ -58,7 +62,6 @@ export function applyFill(word: Word, fill: FillResult, mode: 'new' | 'supplemen
     return out
   }
 
-  const notIn = (list: readonly string[]) => (t: string): boolean => !list.some((x) => sameJa(x, t))
   const accepted = addJa(addJa(word.accepted, fill.accepted.filter(notIn(word.nearMiss))), [word.meaning])
   const out: Word = {
     ...word,

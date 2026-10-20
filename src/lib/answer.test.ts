@@ -114,6 +114,13 @@ describe('settleAnswer（判定が決まったら FSRS に渡し、カード・�
     expect(appealed.review.id).toBe(first.review.id)
   })
 
+  it('朝 4 時をまたいで答えると、解答記録の日は解いた時刻のアプリの日。予定は答える前の日のままで、次の日に出るカードは入れない', () => {
+    const out = settleAnswer(input({ sessionBefore: newSession('2026-10-20'), at: at(2026, 10, 21, 4, 1) }))
+    expect(out.review.day).toBe('2026-10-21')
+    expect(out.session.day).toBe('2026-10-20')
+    expect(out.session.pending).toEqual([])
+  })
+
   it('解いた時刻が前回より前のアプリの日なら、時刻の誤りを投げる（カードを変えずに飛ばすのは画面の仕事）', () => {
     const before = reviewed()
     let thrown: unknown

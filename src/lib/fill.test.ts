@@ -95,6 +95,17 @@ describe("applyFill(…, 'new')（登録の確認の画面に出す値。仕様�
     const w = applyFill(draft(), fill({ acceptedEn: ['nerf', 'Nerf!', 'weaken'] }), 'new', now)
     expect(w.acceptedEn).toEqual(['nerf', 'weaken'])
   })
+
+  it('許容訳にある訳は紛らわしい誤訳に入れない（本人の意味を AI が紛らわしい誤訳に挙げても）', () => {
+    const w = applyFill(
+      draft({ term: 'sick', meaning: '病気の' }),
+      fill({ meaning: 'すごい', accepted: ['すごい', '最高'], nearMiss: ['病気の', '気分が悪い'] }),
+      'new',
+      now,
+    )
+    expect(w.accepted).toEqual(['すごい', '最高', '病気の'])
+    expect(w.nearMiss).toEqual(['気分が悪い'])
+  })
 })
 
 describe("applyFill(…, 'supplement')（AI で補う。仕様書 8-4）", () => {
@@ -165,6 +176,19 @@ describe("applyFill(…, 'supplement')（AI で補う。仕様書 8-4）", () =>
     expect([w.cloze, w.clozeAnswer]).toEqual(['___ ___!', 'give up'])
   })
 
+  it('口調とメモは、入っていれば変えない（空の項目だけ埋める）', () => {
+    const w = applyFill(saved({ tone: '本人の口調', note: '本人のメモ' }), ai, 'supplement', now)
+    expect([w.tone, w.note]).toEqual(['本人の口調', '本人のメモ'])
+  })
+
+  it('穴埋めの答えが空なら、文があっても穴埋めを入れない（new も、穴埋めの無い語への supplement も）', () => {
+    const noAnswer = fill({ clozeAnswer: '' })
+    const made = applyFill(draft(), noAnswer, 'new', now)
+    const filled = applyFill(saved(), noAnswer, 'supplement', now)
+    expect(['cloze' in made, 'clozeAnswer' in made]).toEqual([false, false])
+    expect(['cloze' in filled, 'clozeAnswer' in filled]).toEqual([false, false])
+  })
+
   it('フレーズの語には穴埋めを入れない（種類は本人のまま）', () => {
     const w = applyFill(saved({ term: 'my bad', kind: 'phrase' }), ai, 'supplement', now)
     expect(w.kind).toBe('phrase')
@@ -178,7 +202,7 @@ describe("applyFill(…, 'supplement')（AI で補う。仕様書 8-4）", () =>
     expect(original).toEqual(snapshot)
   })
 
-  it('紛らわしい誤訳にある訳は許容訳に足さない。許容訳にある訳は紛らわしい誤訳に足さない（判定を直した結果を戻さない）', () => {
+  it('紛らわしい誤訳にある訳は許容訳に足さない（× に直して紛らわしい誤訳に入れた訳を、許容訳に戻さない）。許容訳にある訳は紛らわしい誤訳に足さない', () => {
     // 本人が × に直して紛らわしい誤訳に入れた「断念する」を、AI が許容訳に挙げても戻さない
     const w = applyFill(saved({ nearMiss: ['断念する'] }), ai, 'supplement', now)
     expect(w.accepted).toEqual(['あきらめる', '諦める'])

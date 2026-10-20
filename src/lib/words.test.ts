@@ -90,6 +90,14 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     expect(out.needsAi).toBe(true)
   })
 
+  it('英語を変えたら、許容する英語に入っている元の英語も新しい英語に替える（重なれば 1 つにする）', () => {
+    const original = word({ term: 'give in', acceptedEn: ['give in', 'quit'] })
+    expect(applyEdit(original, { ...original, term: 'give up' }, now).acceptedEn).toEqual(['give up', 'quit'])
+    // 編集の画面で許容する英語も直していれば、その値で替える
+    const edited = applyEdit(original, { ...original, term: 'give up', acceptedEn: ['Give in!', 'give up', 'surrender'] }, now)
+    expect(edited.acceptedEn).toEqual(['give up', 'surrender'])
+  })
+
   it('出会った英文を変えた（消した）ときも、穴埋めを空にし、AI で補う前の印を付ける', () => {
     const changed = applyEdit(word(), { ...word(), context: "never give up, we can win" }, now)
     expect('cloze' in changed).toBe(false)
@@ -113,6 +121,15 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     expect('cloze' in out).toBe(false)
     expect('clozeAnswer' in out).toBe(false)
     expect(out.needsAi).toBe(false)
+  })
+
+  it('種類を単語・熟語に変えて穴埋めが空で、出会った英文があれば、7-5 の決まりで作る（英語も変えたときは作らずに AI で補う）', () => {
+    const w = manualWord({ term: 'take care of', context: 'take care of yourself', meaning: '世話をする' }, now)
+    expect([w.kind, 'cloze' in w]).toEqual(['phrase', false])
+    const out = applyEdit(w, { ...w, kind: 'word' }, now)
+    expect([out.cloze, out.clozeAnswer]).toEqual(['___ ___ ___ yourself', 'take care of'])
+    const renamed = applyEdit(w, { ...w, kind: 'word', term: 'take care' }, now)
+    expect(['cloze' in renamed, 'clozeAnswer' in renamed, renamed.needsAi]).toEqual([false, false, true])
   })
 
   it('穴埋めの文と穴の答えの片方だけなら、両方を空にする', () => {
@@ -197,6 +214,16 @@ describe('sortWords（一覧の並び。仕様書 5-2）', () => {
       review('gone', new Date(2026, 9, 22, 9), 'wrong'),
     ]
     expect(sortWords(words, reviews, 'wrong').map((w) => w.id)).toEqual(['a', 'b', 'd', 'c'])
+  })
+
+  it('最後に × になった時刻は、いちばん新しい × の時刻（記録の並びの順ではない）。△ は × に数えない', () => {
+    const reviews = [
+      review('a', new Date(2026, 9, 21, 9), 'wrong'),
+      review('a', new Date(2026, 9, 10, 9), 'wrong'),
+      review('b', new Date(2026, 9, 20, 9), 'wrong'),
+      review('b', new Date(2026, 9, 22, 9), 'close'),
+    ]
+    expect(sortWords([a, b], reviews, 'wrong').map((w) => w.id)).toEqual(['a', 'b'])
   })
 
   it('元の配列は変えない', () => {
