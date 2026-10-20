@@ -43,13 +43,19 @@ describe('normalizeJa', () => {
     expect(normalizeJa('【諦める】［あ］')).toBe('諦めるあ')
     expect(normalizeJa('諦める、あきらめる。')).toBe('諦めるあきらめる')
     expect(normalizeJa('諦める〜')).toBe('諦める')
+    expect(normalizeJa('諦める～')).toBe('諦める')
+    expect(normalizeJa('すご～い')).toBe(normalizeJa('すご〜い'))
     expect(normalizeJa('諦める…')).toBe('諦める')
     expect(normalizeJa('勝つ・負ける')).toBe('勝つ負ける')
     expect(normalizeJa('“諦める”')).toBe('諦める')
   })
 
-  it('全角の英数字は NFKC で半角になる（大文字・小文字はそのまま）', () => {
-    expect(normalizeJa('ＧＧ１２３')).toBe('GG123')
+  it('全角の英数字は NFKC で半角になり、英字は小文字にそろえる', () => {
+    expect(normalizeJa('ＧＧ１２３')).toBe('gg123')
+  })
+
+  it('英字まじりの訳は大文字・小文字を問わず同じになる', () => {
+    expect(normalizeJa('Dmを送る')).toBe(normalizeJa('DMを送る'))
   })
 
   it('記号だけの答えは空になる', () => {
@@ -83,11 +89,15 @@ describe('normalizeEn', () => {
     expect(normalizeEn("you're")).toBe('you are')
     expect(normalizeEn("we've")).toBe('we have')
     expect(normalizeEn("they'll")).toBe('they will')
-    expect(normalizeEn("I'd")).toBe('i would')
   })
 
-  it("'s は展開せず、記号として消す", () => {
+  it("'s と 'd は展開せず、記号として消す", () => {
     expect(normalizeEn("it's")).toBe('its')
+    expect(normalizeEn("I'd like")).toBe('id like')
+  })
+
+  it("'d を would にしないので、had の 'd に would と打った答えは合わない", () => {
+    expect(normalizeEn("You'd better go")).not.toBe(normalizeEn('you would better go'))
   })
 
   it('曲がった引用符をまっすぐにしてから展開する', () => {
@@ -103,6 +113,13 @@ describe('normalizeEn', () => {
 
   it('全角の英字を NFKC で半角にして小文字にする', () => {
     expect(normalizeEn('ＧＧ')).toBe('gg')
+  })
+
+  it('アクセント記号を外す（文字ごとは消さない）', () => {
+    expect(normalizeEn('café')).toBe('cafe')
+    expect(normalizeEn('Pokémon')).toBe('pokemon')
+    expect(normalizeEn('touché')).toBe('touche')
+    expect(normalizeEn('touché')).not.toBe(normalizeEn('touch'))
   })
 
   it('展開した形と元の形が同じになる', () => {

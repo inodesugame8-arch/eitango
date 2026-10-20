@@ -92,6 +92,7 @@ describe('matchLocal 日→英（term・acceptedEn・clozeAnswer と照合）', 
   it('clozeAnswer が無い語でも term と acceptedEn で照合する', () => {
     const w = word({ cloze: undefined, clozeAnswer: undefined })
     expect(matchLocal(w, 'ja-en', 'give up')).toBe(true)
+    expect(matchLocal(w, 'ja-en', 'quit')).toBe(true)
     expect(matchLocal(w, 'ja-en', 'gave up')).toBe(false)
   })
 

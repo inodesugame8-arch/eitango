@@ -8,8 +8,9 @@ function katakanaToHiragana(text: string): string {
   return text.replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
 }
 
+// 英字は小文字にそろえる（「DMを送る」に「Dmを送る」と答えても合うように）
 export function normalizeJa(text: string): string {
-  return katakanaToHiragana(text.normalize('NFKC')).replace(JA_SYMBOLS, '')
+  return katakanaToHiragana(text.normalize('NFKC').toLowerCase()).replace(JA_SYMBOLS, '')
 }
 
 // 崩した言い方
@@ -25,6 +26,7 @@ const SLANG: readonly (readonly [RegExp, string])[] = [
 ]
 
 // 短縮形（'s は is・has・所有の区別ができないので展開しない）。上から順にかける
+// 'd も would・had・did の区別ができないので展開しない（had の語に would と打った誤りが ○ になるため）
 const CONTRACTIONS: readonly (readonly [RegExp, string])[] = [
   [/\bcan't\b/g, 'can not'],
   [/\bwon't\b/g, 'will not'],
@@ -35,12 +37,14 @@ const CONTRACTIONS: readonly (readonly [RegExp, string])[] = [
   [/'re\b/g, ' are'],
   [/'ve\b/g, ' have'],
   [/'ll\b/g, ' will'],
-  [/'d\b/g, ' would'],
 ]
 
+// アクセント記号は外す（café → cafe）。外さないと、英字以外を消すところで é が文字ごと消える
 export function normalizeEn(text: string): string {
   let s = text
     .normalize('NFKC')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
