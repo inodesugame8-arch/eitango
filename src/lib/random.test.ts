@@ -13,6 +13,8 @@ describe('hashString（32 ビットの FNV-1a）', () => {
     expect(Number.isInteger(h)).toBe(true)
     expect(h).toBeGreaterThanOrEqual(0)
     expect(h).toBeLessThan(2 ** 32)
+    // 「あ」の UTF-8 のバイト列（E3 81 82）の FNV-1a
+    expect(hashString('あ')).toBe(0xe02c1bb1)
   })
 
   it('同じ文字列なら同じ値、違う文字列なら違う値', () => {
@@ -28,6 +30,11 @@ describe('mulberry32（種つきの乱数）', () => {
     const xs = Array.from({ length: 5 }, () => a())
     const ys = Array.from({ length: 5 }, () => b())
     expect(xs).toEqual(ys)
+  })
+
+  it('種 42 の最初の 3 つの値は決まっている（作り方が変わって今日の並びが変わらないように）', () => {
+    const r = mulberry32(42)
+    expect([r(), r(), r()]).toEqual([0.6011037519201636, 0.44829055899754167, 0.8524657934904099])
   })
 
   it('違う種なら違う列を返す', () => {
@@ -92,6 +99,7 @@ describe('orderByHash（ハッシュの小さい順に並べる）', () => {
     }
     expect(pair).toBeDefined()
     const [a, b] = [...(pair as [string, string])].sort()
+    expect(a).not.toBe(b)
     expect(orderByHash([b, a], (key) => key, 'x')).toEqual([a, b])
     expect(orderByHash([a, b], (key) => key, 'x')).toEqual([a, b])
   })

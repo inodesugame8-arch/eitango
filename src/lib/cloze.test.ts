@@ -9,9 +9,7 @@ describe('makeCloze（仕様書 7-5 の表）', () => {
     })
   })
 
-  // 仕様書の表の 2 行目は「He Gave Up early」だが、同じ節の決まり「語形が変わったもの（gave up など）は
-  // 見つからない」と食い違う（gave と give は綴りが違う）。決まりを正とし、表の行が確認したいこと
-  // （大文字・小文字を区別しない・答えは文の中の文字のまま）を Give Up で確認する
+  // 仕様書 7-5 の表の 2 行目（Give Up）と 3 行目（Gave Up は作らない）
   it('give up / He Give Up early → He ___ ___ early（大文字・小文字を区別せず、答えは文の中の文字のまま）', () => {
     expect(makeCloze('give up', 'He Give Up early')).toEqual({
       cloze: 'He ___ ___ early',
@@ -44,11 +42,15 @@ describe('makeCloze の細部', () => {
     expect(makeCloze('  give  up ', 'I give up')).toEqual({ cloze: 'I ___ ___', answer: 'give up' })
   })
 
-  it('最初に見つかった所を使う', () => {
+  it('同じ英語が 2 回以上あれば、どれも ___ にする（答えは最初に見つかった所の文字）', () => {
     expect(makeCloze('give up', 'give up? never give up')).toEqual({
-      cloze: '___ ___? never give up',
+      cloze: '___ ___? never ___ ___',
       answer: 'give up',
     })
+  })
+
+  it('1 語の英語が 2 回あっても、どれも ___ にする', () => {
+    expect(makeCloze('gg', 'gg gg wp')).toEqual({ cloze: '___ ___ wp', answer: 'gg' })
   })
 
   it('1 語の英語', () => {
@@ -60,6 +62,28 @@ describe('makeCloze の細部', () => {
       cloze: 'hey ___ ___ guys',
       answer: "what's up",
     })
+  })
+
+  it('アポストロフィの形（\' と ‘ と ’）は区別せず、答えは文の中の文字のまま', () => {
+    expect(makeCloze("y'all", 'y’all are cracked')).toEqual({
+      cloze: '___ are cracked',
+      answer: 'y’all',
+    })
+    expect(makeCloze('what’s up', "what's up guys")).toEqual({
+      cloze: '___ ___ guys',
+      answer: "what's up",
+    })
+  })
+
+  it('語の頭も切れ目で一致する（handicap の中の cap は ___ にしない）', () => {
+    expect(makeCloze('cap', 'that handicap is huge, no cap')).toEqual({
+      cloze: 'that handicap is huge, no ___',
+      answer: 'cap',
+    })
+  })
+
+  it('正規表現の記号（? など）を含む英語も、その文字のまま探す', () => {
+    expect(makeCloze('u up?', 'u up? lol')).toEqual({ cloze: '___ ___ lol', answer: 'u up?' })
   })
 
   it('英語か英文が空なら作らない', () => {

@@ -11,13 +11,13 @@ describe('newId', () => {
     expect(newId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   })
 
-  it('crypto が無いとき（LAN の http）は 32 文字の 16 進を返す', () => {
+  it('crypto そのものが無いときも 32 文字の 16 進を返す', () => {
     vi.stubGlobal('crypto', undefined)
     expect(globalThis.crypto).toBeUndefined()
     expect(newId()).toMatch(/^[0-9a-f]{32}$/)
   })
 
-  it('crypto はあっても randomUUID が無いときも 32 文字の 16 進を返す', () => {
+  it('crypto はあっても randomUUID が無いとき（LAN の http）は 32 文字の 16 進を返す', () => {
     vi.stubGlobal('crypto', {})
     expect(newId()).toMatch(/^[0-9a-f]{32}$/)
   })
