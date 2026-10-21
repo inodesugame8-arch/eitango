@@ -1,7 +1,7 @@
 // 設定（仕様書 5-3・9-3）。変えたらすぐ保存する。読み上げと AI の接続の試しは「動作確認」（#/check）に置く
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAppData } from '../app/useAppData.ts'
-import { BUTTON, FIELD, NOTE, SAVE_FAILED } from '../components/ui.ts'
+import { BUTTON, FIELD, NOTE, replaceLink, SAVE_FAILED } from '../components/ui.ts'
 import UpdateBanner from '../components/UpdateBanner.tsx'
 import { parseBackup, toBackupJson } from '../lib/backup.ts'
 import { MODELS, VOICE_RATES } from '../lib/config.ts'
@@ -28,9 +28,11 @@ export default function SettingsScreen() {
   const [keyDraft, setKeyDraft] = useState(settings.apiKey ?? '')
   const [showKey, setShowKey] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [exportText, setExportText] = useState('')
+  // 書き出しの文字の欄を出すか。欄とコピーの文字は、いつも今の backup.json（押した時の写しを持たない）
+  const [showExportText, setShowExportText] = useState(false)
   const [exportStatus, setExportStatus] = useState('')
   const [importStatus, setImportStatus] = useState('')
+  const [importing, setImporting] = useState(false)
   const [updateStatus, setUpdateStatus] = useState('')
   // 保存が守られているか（画面を開いたときに 1 回読む）。案内を出すのは false のときだけで、分からないときは出さない
   const [persisted, setPersisted] = useState<boolean | undefined>(undefined)
@@ -67,7 +69,7 @@ export default function SettingsScreen() {
 
   const onExport = async (): Promise<void> => {
     if (!canShareFile(backup.file)) {
-      setExportText(backup.json)
+      setShowExportText(true)
       setExportStatus('共有が使えません。下の文字をコピーして、メモなどに貼って保存してください')
       return
     }
@@ -78,13 +80,13 @@ export default function SettingsScreen() {
     } else if (result === 'cancelled') {
       setExportStatus('')
     } else {
-      setExportText(backup.json)
+      setShowExportText(true)
       setExportStatus('共有できませんでした。下の文字をコピーして、メモなどに貼って保存してください')
     }
   }
 
   const onCopy = async (): Promise<void> => {
-    if (await copyText(exportText)) {
+    if (await copyText(backup.json)) {
       save({ lastExportAt: new Date() })
       setExportStatus('コピーしました')
     } else {
@@ -93,6 +95,7 @@ export default function SettingsScreen() {
   }
 
   const onPick = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    setImportStatus('') // 前の結果の文を消す
     const input = e.target
     const file = input.files?.[0]
     input.value = '' // 同じファイルをもう一度選べるように
@@ -109,7 +112,13 @@ export default function SettingsScreen() {
       setImportStatus(parsed.error)
       return
     }
-    if (!confirm('今のデータを全部置き換えます')) return
+    if (!confirm('今のデータを全部置き換えます')) {
+      setImportStatus('読み込みをやめました')
+      return
+    }
+    // 終わるまで選び直せないようにする（画面の移動は止めない。setInSession を使うと学習の画面が出るため）
+    setImportStatus('読み込んでいます。終わるまでこの画面のままにしてください')
+    setImporting(true)
     try {
       // 今の端末のキーは残し、その日のもう一度出す予定は捨てる
       await replaceAll(db, parsed.data, settings.apiKey)
@@ -117,6 +126,8 @@ export default function SettingsScreen() {
       setImportStatus(`読み込みました（語 ${parsed.data.words.length} 個）`)
     } catch {
       setImportStatus(SAVE_FAILED)
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -124,7 +135,7 @@ export default function SettingsScreen() {
     setUpdateStatus('確認しています')
     try {
       await checkUpdate()
-      setUpdateStatus('確認しました。新しい版があれば「新しい版があります」が出ます')
+      setUpdateStatus('確認しました。新しい版があれば、ここと画面のいちばん上に出ます（少し時間がかかります）')
     } catch {
       setUpdateStatus('確認できませんでした。電波のある所でもう一度押してください')
     }
@@ -135,7 +146,12 @@ export default function SettingsScreen() {
   return (
     <main className="mx-auto max-w-xl px-4 pb-4">
       {needRefresh && <UpdateBanner onUpdate={() => void applyUpdate()} />}
-      {saveError && <p className="mt-2 font-bold">{saveError}</p>}
+      {/* スクロールしても見えるように、上の帯（ボタンの高さ 44px と下の線 1px）のすぐ下に貼り付ける */}
+      {saveError && (
+        <p className="sticky top-[45px] z-10 -mx-4 border-b border-neutral-300 bg-white px-4 py-2 font-bold dark:border-neutral-700 dark:bg-black">
+          {saveError}
+        </p>
+      )}
 
       <Section title="Gemini のキー">
         <input
@@ -224,11 +240,11 @@ export default function SettingsScreen() {
           <span className={NOTE}>{backup.file.name}</span>
         </div>
         {exportStatus && <p className="mt-2">{exportStatus}</p>}
-        {exportText && (
+        {showExportText && (
           <div className="mt-2">
             <textarea
               readOnly
-              value={exportText}
+              value={backup.json}
               rows={6}
               aria-label="書き出した JSON"
               className="block w-full rounded-lg border border-neutral-400 p-2 font-mono dark:border-neutral-600"
@@ -246,6 +262,7 @@ export default function SettingsScreen() {
           type="file"
           accept="application/json,.json"
           onChange={(e) => void onPick(e)}
+          disabled={importing}
           aria-label="書き出したファイルを選ぶ"
           className="mt-2 block min-h-11"
         />
@@ -262,7 +279,13 @@ export default function SettingsScreen() {
           </button>
         </div>
         {updateStatus && <p className="mt-2">{updateStatus}</p>}
-        <a href="#/check" className="mt-4 inline-flex min-h-11 items-center text-[13px] underline">
+        {/* 押した所からも見えるように、画面のいちばん上と同じものをここにも出す */}
+        {needRefresh && (
+          <div className="mt-2">
+            <UpdateBanner onUpdate={() => void applyUpdate()} />
+          </div>
+        )}
+        <a href="#/check" onClick={replaceLink} className="mt-4 inline-flex min-h-11 items-center text-[13px] underline">
           動作確認
         </a>
       </Section>

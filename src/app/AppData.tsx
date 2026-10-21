@@ -24,11 +24,18 @@ export default function AppDataProvider({ children }: { children: ReactNode }) {
   const [inSession, setInSession] = useState(false)
   const settingsRef = useRef(snap.settings)
   const writes = useRef<Promise<unknown>>(Promise.resolve())
+  const saves = useRef(0) // saveSettings を呼んだ回数（reload が、読んでいる間に設定が変わったかを見るため）
   // サービスワーカーの登録はアプリの中でここ 1 か所だけ
   const { needRefresh, applyUpdate, checkUpdate } = usePwaUpdate()
 
+  // 書き終わっていない設定の変更を、読んだ古い値で戻さないようにする: 前の書き込みを待ってから読み、
+  // 待っている間か読んでいる間に設定が変わったら、読んだ設定ではなく今の設定（settingsRef）を使う。
+  // 回数は待つ前に控える（待っている間に入った保存は、読む時点でまだ書き終わっていないことがあるため）
   const reload = useCallback(async (): Promise<Snapshot> => {
+    const count = saves.current
+    await writes.current
     const next = await fetchSnapshot(db)
+    if (saves.current !== count) next.settings = settingsRef.current
     settingsRef.current = next.settings
     setSnap(next)
     return next
@@ -58,6 +65,7 @@ export default function AppDataProvider({ children }: { children: ReactNode }) {
   // 画面にはすぐ反映し、書き込みは順に行う（続けて変えたときに古い値で上書きしないように）
   const saveSettings = useCallback(
     (patch: Partial<Settings>): Promise<void> => {
+      saves.current += 1
       const next: Settings = { ...settingsRef.current, ...patch }
       settingsRef.current = next
       setSnap((s) => ({ ...s, settings: next }))

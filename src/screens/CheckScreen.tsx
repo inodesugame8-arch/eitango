@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import { caseWord, JUDGE_CASES, type JudgeCase } from '../check/judgeCases.ts'
+import { replaceLink } from '../components/ui.ts'
 import { CHECK_DB_NAME, DEFAULT_MODEL, FILL_INTERVAL_MS, FILL_TIMEOUT_MS, MODELS, VOICE_RATES } from '../lib/config.ts'
 import { callGemini, GeminiError, type FormatStyle } from '../lib/gemini/client.ts'
 import { judgePrompt, parseJudge } from '../lib/gemini/prompts.ts'
@@ -1015,7 +1016,7 @@ export default function CheckScreen() {
     <main className="mx-auto max-w-2xl p-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">動作確認</h1>
-        <a href="#/" className="inline-flex min-h-11 items-center px-2 underline">
+        <a href="#/" onClick={replaceLink} className="inline-flex min-h-11 items-center px-2 underline">
           戻る
         </a>
       </div>
