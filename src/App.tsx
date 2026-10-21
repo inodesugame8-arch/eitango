@@ -6,6 +6,7 @@ import Icon from './components/Icon.tsx'
 import InstallGuide from './components/InstallGuide.tsx'
 import { replaceLink } from './components/ui.ts'
 import UpdateBanner from './components/UpdateBanner.tsx'
+import { TAP_GUARD_MS } from './lib/config.ts'
 import { isIOS, isStandalone, requestPersist } from './lib/platform.ts'
 import CheckScreen from './screens/CheckScreen.tsx'
 import SettingsScreen from './screens/SettingsScreen.tsx'
@@ -58,10 +59,21 @@ function TopBar({ route }: { route: Route }) {
 }
 
 function BottomNav({ route }: { route: Route }) {
+  // 学習が終わって出た直後（最後の問題の「次へ」の 2 度押しの 2 回目が当たる）の押しは無視する
+  const shownAt = useRef(Number.NEGATIVE_INFINITY)
+  useEffect(() => {
+    shownAt.current = performance.now()
+  }, [])
   const tab = (href: string, label: string, active: boolean) => (
     <a
       href={href}
-      onClick={replaceLink}
+      onClick={(e) => {
+        if (performance.now() - shownAt.current < TAP_GUARD_MS) {
+          e.preventDefault()
+          return
+        }
+        replaceLink(e)
+      }}
       aria-current={active ? 'page' : undefined}
       className={`flex min-h-11 items-center justify-center border-t-2 ${
         active ? 'border-current font-bold' : 'border-transparent text-neutral-500'

@@ -145,8 +145,8 @@ function SessionLayout({ children }: { children: ReactNode }) {
 
 const keep = (e: { preventDefault: () => void }): void => e.preventDefault()
 
-// 画面が替わった時刻（performance.now()）から TAP_GUARD_MS 経っていないか。経っていない「答える」「わからない」
-// 「自分で採点」「次へ」は無視する（2 度押しの 2 回目が、次の画面の同じ場所のボタンに当たって記録されるのを防ぐ）
+// 画面か中身が替わった時刻（performance.now()。phaseAt・changedAt）から TAP_GUARD_MS 経っていないか。経っていない
+// 押しは無視する（2 度押しの 2 回目が、替わった直後の画面の同じ場所のボタンに当たって記録されるのを防ぐ）
 const justChanged = (since: number): boolean => performance.now() - since < TAP_GUARD_MS
 
 export default function StudyScreen() {
@@ -168,9 +168,15 @@ export default function StudyScreen() {
   const speakToken = useRef(0)
   // 画面（phase の name）が替わった時刻（performance.now()）。判定を直す（答えた後の画面のまま）では替えない
   const phaseAt = useRef(0)
+  // 画面の中身が替わった時刻（判定を直す・簡単すぎ・もっとやるの数え直しのように、名前が同じままでも替える）。
+  // 判定を直すの選択肢が閉じて中身が縮むと、スクロールの位置が詰められて上の行（判定を直す・簡単すぎ）が下がり、
+  // 2 度押しの 2 回目が「簡単すぎ」に当たる。同じボタンの 2 度押しで「もっとやる」を 2 回足すのも防ぐ
+  const changedAt = useRef(0)
 
   const setPhase = useCallback((p: Phase) => {
-    if (p.name !== phaseRef.current.name) phaseAt.current = performance.now()
+    const t = performance.now()
+    if (p.name !== phaseRef.current.name) phaseAt.current = t
+    changedAt.current = t
     phaseRef.current = p
     setPhaseState(p)
   }, [])
@@ -463,7 +469,7 @@ export default function StudyScreen() {
   const redo = async (to: Verdict, easy: boolean): Promise<void> => {
     const p = phaseRef.current
     const r = run.current
-    if (p.name !== 'answer' || !r || busy.current) return
+    if (p.name !== 'answer' || !r || busy.current || justChanged(changedAt.current)) return
     busy.current = true
     saving.current = true
     try {
@@ -593,7 +599,7 @@ export default function StudyScreen() {
   const addNew = (): void => {
     const r = run.current
     const p = phaseRef.current
-    if (!r || p.name !== 'start' || saving.current) return
+    if (!r || p.name !== 'start' || saving.current || justChanged(changedAt.current)) return
     const now = new Date()
     if (dayOf(now) !== r.session.day) {
       void restart()
@@ -622,7 +628,7 @@ export default function StudyScreen() {
   const addAhead = (): void => {
     const r = run.current
     const p = phaseRef.current
-    if (!r || p.name !== 'start') return
+    if (!r || p.name !== 'start' || justChanged(changedAt.current)) return
     const now = new Date()
     if (dayOf(now) !== r.session.day) {
       void restart()
@@ -707,7 +713,10 @@ export default function StudyScreen() {
         choices={appealChoices(res.word, res.q.direction, res.answer, res.verdict, res.judgedBy)}
         choicesOpen={choicesOpen}
         onPlay={() => playTerm(res.word.term)}
-        onToggleChoices={() => setChoicesOpen((v) => !v)}
+        onToggleChoices={() => {
+          // 判定を直した直後の 2 回目で、閉じた選択肢をまた開かない
+          if (!justChanged(changedAt.current)) setChoicesOpen((v) => !v)
+        }}
         onAppeal={(to) => void redo(to, false)}
         onEasy={() => void redo('correct', true)}
       />
@@ -774,7 +783,14 @@ export default function StudyScreen() {
         </span>
       </header>
       {more && <p className="px-4 pt-2 text-[13px]">{more}</p>}
-      <div key={bodyKey} className="flex-1 overflow-y-auto px-4 py-3">
+      <div
+        key={bodyKey}
+        className="flex-1 overflow-y-auto px-4 py-3"
+        onMouseDown={(e) => {
+          // 2 度押しの 2 回目が、替わった直後の本文の何も無い所に当たっても、入力欄の選択を外さない（キーボードを閉じない）
+          if (justChanged(changedAt.current)) e.preventDefault()
+        }}
+      >
         {body}
       </div>
       <AnswerForm
