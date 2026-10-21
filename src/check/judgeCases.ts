@@ -169,7 +169,8 @@ export const JUDGE_CASES: readonly JudgeCase[] = [
     expected: 'wrong',
   },
   { no: 11, direction: 'en-ja', ...winEnJa, answer: '勝ちたいの？', expected: 'close' },
-  { no: 12, direction: 'en-ja', ...winEnJa, answer: '勝つ気ある？', expected: 'correct' },
+  // 12 はイラ立ち・皮肉が抜けているので、口調の決まり（仕様書 7-3）どおり △ を期待にする（2026-10-21。T10 では 2 回とも AI が △）
+  { no: 12, direction: 'en-ja', ...winEnJa, answer: '勝つ気ある？', expected: 'close' },
   {
     no: 13,
     direction: 'en-ja',
@@ -198,7 +199,8 @@ export const JUDGE_CASES: readonly JudgeCase[] = [
     answer: 'グッドゲーム',
     expected: 'correct',
   },
-  { no: 15, direction: 'ja-en', ...giveUpJaEn, answer: 'quit', expected: 'correct' },
+  // 15 は穴埋めで別の言い方を入れた答え。意味が合っていても △（2026-10-21 本人決定。仕様書 7-3）
+  { no: 15, direction: 'ja-en', ...giveUpJaEn, answer: 'quit', expected: 'close' },
   { no: 16, direction: 'ja-en', ...giveUpJaEn, answer: 'give in', expected: 'close' },
   { no: 17, direction: 'ja-en', ...winJaEn, answer: 'Do you even want to win', expected: 'correct' },
   { no: 18, direction: 'ja-en', ...winJaEn, answer: 'Do you want to win?', expected: 'close' },
