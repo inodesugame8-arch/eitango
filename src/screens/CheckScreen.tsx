@@ -713,13 +713,12 @@ function CasesSection({ report, ai }: { report: Report; ai: AiOptions }) {
 
 type InputMode = 'en' | 'ja'
 
-// 学習の画面と同じ付け替え（英語: lang en・autocorrect off・autocapitalize none・spellcheck false、日本語: lang ja だけ）
+// 学習の画面と同じ属性（向きにかかわらず autocorrect off・autocapitalize none・spellcheck false。替えるのは lang だけ。
+// iPhone は選んだままの欄の属性の変更をキーボードに伝えないため。仕様書 5-1）
 function inputAttrs(
   mode: InputMode,
 ): Pick<InputHTMLAttributes<HTMLInputElement>, 'lang' | 'autoCorrect' | 'autoCapitalize' | 'spellCheck'> {
-  return mode === 'en'
-    ? { lang: 'en', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false }
-    : { lang: 'ja' }
+  return { lang: mode, autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false }
 }
 
 function domAttrs(el: HTMLInputElement | null): string {
@@ -735,7 +734,6 @@ function keyText(e: KeyboardEvent<HTMLInputElement>): string {
 function ImeSection({ report }: { report: Report }) {
   const [lines, add, clear] = useLog()
   const [mode, setMode] = useState<InputMode>('ja')
-  const [hint, setHint] = useState<'send' | 'next'>('send')
   const [autoSwap, setAutoSwap] = useState(false)
   const guarded = useRef<HTMLInputElement>(null)
   const plain = useRef<HTMLInputElement>(null)
@@ -745,7 +743,7 @@ function ImeSection({ report }: { report: Report }) {
   // 付け替えた後の実際の属性を記録する
   useEffect(() => {
     add(`属性: ${domAttrs(guarded.current)}`)
-  }, [add, mode, hint])
+  }, [add, mode])
 
   const text = [`送るたびに入れ替える: ${yesNo(autoSwap)}`, ...lines].join('\n')
   useEffect(() => report('ime', text), [report, text])
@@ -796,7 +794,7 @@ function ImeSection({ report }: { report: Report }) {
           <input
             ref={guarded}
             {...inputAttrs(mode)}
-            enterKeyHint={hint}
+            enterKeyHint="send"
             onKeyDown={onGuardedKeyDown}
             onCompositionStart={() => add('対策あり compositionstart')}
             onCompositionEnd={(e) => {
@@ -838,9 +836,6 @@ function ImeSection({ report }: { report: Report }) {
         </Button>
         <Button keepFocus onClick={() => setMode('ja')} disabled={mode === 'ja'}>
           日本語に切り替え
-        </Button>
-        <Button keepFocus onClick={() => setHint((h) => (h === 'send' ? 'next' : 'send'))}>
-          改行キーの表示を {hint === 'send' ? 'next' : 'send'} に
         </Button>
       </Row>
       <Row>

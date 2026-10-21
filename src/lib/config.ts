@@ -29,5 +29,9 @@ export const FILL_TIMEOUT_MS = 25_000
 export const FILL_INTERVAL_MS = 5_000
 export const SPEAK_RESTART_DELAY_MS = 250
 export const SPEAK_START_TIMEOUT_MS = 1_500
+// 学習の画面が替わってから、この間の「答える」「わからない」「自分で採点」「次へ」は無視する（2 度押しで、次の画面の
+// 同じ場所のボタンに 2 回目が当たるのを防ぐ）。iPhone のダブルタップの 2 回目は 1 回目から約 100〜300 ミリ秒で、
+// T32 の審査の再現でも 2 回目は 106〜163 ミリ秒だった。それより長く、読んでから押すまでより短い 400 ミリ秒
+export const TAP_GUARD_MS = 400
 // 読み上げの速さの選択肢（仕様書 10 章）。0.5〜2.0 の 0.1 刻み。iPhone では 2.0 が端末の最大の速さに当たる
 export const VOICE_RATES = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2] as const

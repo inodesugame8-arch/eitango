@@ -9,7 +9,7 @@ import { settleAnswer, type Settled } from '../lib/answer.ts'
 import { appealChoices, applyAppeal } from '../lib/appeal.ts'
 import { exportReminderDue } from '../lib/backup.ts'
 import { scrambleWords } from '../lib/cloze.ts'
-import { AHEAD_PER_PRESS, DEFAULT_NEW_PER_DAY, JUDGE_TIMEOUT_MS } from '../lib/config.ts'
+import { AHEAD_PER_PRESS, DEFAULT_NEW_PER_DAY, JUDGE_TIMEOUT_MS, TAP_GUARD_MS } from '../lib/config.ts'
 import { getSession, saveAnswer, saveSession, type EitangoDB } from '../lib/db.ts'
 import { dayOf } from '../lib/day.ts'
 import { callGemini, errorText, GeminiError } from '../lib/gemini/client.ts'
@@ -145,6 +145,10 @@ function SessionLayout({ children }: { children: ReactNode }) {
 
 const keep = (e: { preventDefault: () => void }): void => e.preventDefault()
 
+// 画面が替わった時刻（performance.now()）から TAP_GUARD_MS 経っていないか。経っていない「答える」「わからない」
+// 「自分で採点」「次へ」は無視する（2 度押しの 2 回目が、次の画面の同じ場所のボタンに当たって記録されるのを防ぐ）
+const justChanged = (since: number): boolean => performance.now() - since < TAP_GUARD_MS
+
 export default function StudyScreen() {
   const { db, settings, reload, setInSession, needRefresh, applyUpdate } = useAppData()
   const [phase, setPhaseState] = useState<Phase>({ name: 'loading' })
@@ -162,8 +166,11 @@ export default function StudyScreen() {
   const busy = useRef(false) // 答え・判定を直す・自分で採点の処理中（二重に送らない）
   const saving = useRef(false) // 保存の途中（「やめる」で予定を古いもので上書きしない）
   const speakToken = useRef(0)
+  // 画面（phase の name）が替わった時刻（performance.now()）。判定を直す（答えた後の画面のまま）では替えない
+  const phaseAt = useRef(0)
 
   const setPhase = useCallback((p: Phase) => {
+    if (p.name !== phaseRef.current.name) phaseAt.current = performance.now()
     phaseRef.current = p
     setPhaseState(p)
   }, [])
@@ -378,7 +385,7 @@ export default function StudyScreen() {
   const answer = async (text: string, giveUp: boolean): Promise<void> => {
     const p = phaseRef.current
     const r = run.current
-    if (p.name !== 'question' || !r || busy.current) return
+    if (p.name !== 'question' || !r || busy.current || justChanged(phaseAt.current)) return
     busy.current = true
     try {
       const at = new Date()
@@ -441,7 +448,7 @@ export default function StudyScreen() {
 
   const selfGrade = async (verdict: Verdict): Promise<void> => {
     const p = phaseRef.current
-    if (p.name !== 'self' || busy.current) return
+    if (p.name !== 'self' || busy.current || justChanged(phaseAt.current)) return
     busy.current = true
     try {
       // 自分で ○ にした答えは許容訳に加えない（加えるのは「正解にする」を押したときだけ）
@@ -508,19 +515,23 @@ export default function StudyScreen() {
   // 次へ。朝 4 時をまたいでいたら、今の 1 問を終えたところで予定を捨てて並びを作り直す（仕様書 6-4）
   const next = (): void => {
     const p = phaseRef.current
-    if ((p.name !== 'answer' && p.name !== 'clock') || busy.current) return
+    if ((p.name !== 'answer' && p.name !== 'clock') || busy.current || justChanged(phaseAt.current)) return
     const r = run.current
     if (!r) return
-    // 「次へ」を押した処理の中で入力欄を選ぶ（キーボードが閉じていたら開く）
-    inputRef.current?.focus({ preventScroll: true })
     const now = new Date()
     if (dayOf(now) !== r.session.day) {
+      // 始める前の画面には入力欄が無いので選ばない
       setInSession(false)
       void restart()
       return
     }
-    setMore('')
-    showNext(now)
+    // 次の問題の向きの属性を入力欄に付けてから、押した処理の中で選ぶ（キーボードが閉じていたら開く）。
+    // iPhone はキーボードの設定を選んだ時の属性で作るので、選ぶのは描いた後（begin と同じ）
+    flushSync(() => {
+      setMore('')
+      showNext(now)
+    })
+    inputRef.current?.focus({ preventScroll: true })
   }
 
   // 入力欄の改行（form の submit）。答える前は「答える」、答えた後は「次へ」。判定中と自分で採点の間は無視する
@@ -665,7 +676,10 @@ export default function StudyScreen() {
         ? phase.result.q
         : phase.attempt.q
   const { done, total } = phase.progress
-  const answered = phase.name === 'answer' || phase.name === 'clock'
+  // 本文の入れ物の key。新しい問題が出たときと、答えた後（自分で採点・時計の誤り）の画面に替わったときに入れ物を
+  // 作り直し、前の画面でスクロールした位置を残さない（判定中は問題の画面のまま）。入力欄は兄弟なので作り直さない
+  const view = phase.name === 'judging' ? 'question' : phase.name
+  const bodyKey = `${q.cardId}:${q.shownAt}:${view}`
 
   let body: ReactNode
   if (phase.name === 'question' || phase.name === 'judging') {
@@ -702,21 +716,24 @@ export default function StudyScreen() {
     body = <p className="text-xl">{CLOCK_TEXT}</p>
   }
 
+  // 入力欄の下のボタン。押しても入力欄の選択を外さないのは、AnswerForm のボタンの行の入れ物で行う
   let buttons: ReactNode
   if (phase.name === 'question') {
     buttons = (
       <>
-        <button type="button" onClick={() => void answer('', true)} onMouseDown={keep} className={`${BUTTON} flex-1`}>
+        <button type="button" onClick={() => void answer('', true)} className={`${BUTTON} flex-1`}>
           わからない
         </button>
-        <button type="submit" onMouseDown={keep} className={`${PRIMARY} flex-1`}>
+        <button type="submit" className={`${PRIMARY} flex-1`}>
           答える
         </button>
       </>
     )
   } else if (phase.name === 'judging') {
     buttons = (
-      <button type="button" disabled className={`${BUTTON} flex-1`}>
+      // disabled にしない。disabled のフォームの部品を的にした本物の mousedown は、WebKit（EventPath::adjustForDisabledFormControl）
+      // でも Chrome でも祖先に届かず、ボタンの行の入れ物の preventDefault が効かずに入力欄の選択が外れるため。押しても何もしない
+      <button type="button" aria-disabled="true" className={`${BUTTON} flex-1 aria-disabled:opacity-40`}>
         判定中
       </button>
     )
@@ -726,7 +743,6 @@ export default function StudyScreen() {
         key={v}
         type="button"
         onClick={() => void selfGrade(v)}
-        onMouseDown={keep}
         className={`${BUTTON} flex-1 font-bold ${VERDICT_COLOR[v]}`}
       >
         {VERDICT_MARK[v]} {VERDICT_LABEL[v]}
@@ -734,7 +750,7 @@ export default function StudyScreen() {
     ))
   } else {
     buttons = (
-      <button type="submit" onMouseDown={keep} className={`${PRIMARY} flex-1`}>
+      <button type="submit" className={`${PRIMARY} flex-1`}>
         次へ
       </button>
     )
@@ -743,7 +759,8 @@ export default function StudyScreen() {
   return (
     <SessionLayout>
       <header className="flex items-center gap-3 px-4 pt-2">
-        <button type="button" onClick={quit} onMouseDown={keep} className="min-h-11 text-[13px] underline">
+        {/* 押せる範囲は 44×44 以上（仕様書 11 章）。13px の 3 文字では幅が 39px なので min-w-11 で広げる */}
+        <button type="button" onClick={quit} onMouseDown={keep} className="min-h-11 min-w-11 text-[13px] underline">
           やめる
         </button>
         <div className="h-1.5 flex-1 rounded bg-neutral-200 dark:bg-neutral-800">
@@ -757,12 +774,13 @@ export default function StudyScreen() {
         </span>
       </header>
       {more && <p className="px-4 pt-2 text-[13px]">{more}</p>}
-      <div className="flex-1 overflow-y-auto px-4 py-3">{body}</div>
+      <div key={bodyKey} className="flex-1 overflow-y-auto px-4 py-3">
+        {body}
+      </div>
       <AnswerForm
         inputRef={inputRef}
         value={value}
         english={q.direction === 'ja-en'}
-        answered={answered}
         onChange={setValue}
         onFirstInput={() => {
           if (firstInputAt.current === undefined) firstInputAt.current = Date.now()

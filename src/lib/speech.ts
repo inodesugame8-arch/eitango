@@ -8,6 +8,18 @@ export type SpeechLog = (event: SpeechEvent, detail: string) => void
 
 // 読み上げ中の発話は関数の外の変数に持っておく（どこからも参照されないと消され、onend が来ない不具合への備え）
 let current: SpeechSynthesisUtterance | undefined
+// 読み上げの世代。speak と stopSpeech で 1 増やす。止めて待つ間に次の読み上げか「止める」が来たら、待ち終わった
+// 古い英語は読まない（待ちは止められないので、やめた後や次の問題で前の英語が鳴るのを防ぐ）。unlockSpeech は読み上げを
+// 頼むものではないので増やさない（準備で、待っている読み上げを止める理由は無い）
+let generation = 0
+// 読んでいた（か積んであった）読み上げを最後に止めた時刻（performance.now()）。止めてから SPEAK_RESTART_DELAY_MS の
+// 間は、どの読み上げも読まずに待つ（前の呼び出しが止めて待っている間に来た読み上げは、合成が空いて見えるため）
+let cancelledAt = Number.NEGATIVE_INFINITY
+
+function cancelNow(synth: SpeechSynthesis): void {
+  if (synth.speaking || synth.pending) cancelledAt = performance.now()
+  synth.cancel()
+}
 
 export function speechSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance === 'function'
@@ -30,13 +42,19 @@ export function unlockSpeech(): void {
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 // 読み上げる。SPEAK_START_TIMEOUT_MS までに始まらなければ 'not-started'（呼ぶ側で再生ボタンを目立たせる）。
-// 読み上げ中なら止めて SPEAK_RESTART_DELAY_MS 待ってから読む（止めた直後の読み上げまで消える iOS の不具合への備え）
+// 読み上げ中なら止める。止めてから SPEAK_RESTART_DELAY_MS たつまでは待ってから読む（止めた直後の読み上げまで消える
+// iOS の不具合への備え。ほかの呼び出しが止めた直後に来たときも待つ）。待つ間に次の speak か stopSpeech が来たら、
+// 読まずに 'not-started'
 export async function speak(text: string, rate: number, log?: SpeechLog): Promise<'started' | 'not-started'> {
   if (!speechSupported() || text.trim() === '') return 'not-started'
+  generation += 1
+  const mine = generation
   const synth = window.speechSynthesis
-  if (synth.speaking || synth.pending) {
-    synth.cancel()
-    await wait(SPEAK_RESTART_DELAY_MS)
+  if (synth.speaking || synth.pending) cancelNow(synth)
+  const left = cancelledAt + SPEAK_RESTART_DELAY_MS - performance.now()
+  if (left > 0) {
+    await wait(left)
+    if (generation !== mine) return 'not-started'
   }
   const u = new SpeechSynthesisUtterance(text)
   u.lang = 'en-US'
@@ -69,5 +87,6 @@ export async function speak(text: string, rate: number, log?: SpeechLog): Promis
 }
 
 export function stopSpeech(): void {
-  if (speechSupported()) window.speechSynthesis.cancel()
+  generation += 1
+  if (speechSupported()) cancelNow(window.speechSynthesis)
 }
