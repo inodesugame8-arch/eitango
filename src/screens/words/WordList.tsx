@@ -22,13 +22,14 @@ export default function WordList({ onEdit, onDelete }: { onEdit: (w: Word) => vo
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-bold">一覧（{words.length} 語）</h2>
         <div className="flex gap-2">
+          {/* 選んでいる方は、枠を文字の色にして太字に（BUTTON の枠の色に負けないよう ! を付ける） */}
           {ORDERS.map((o) => (
             <button
               key={o.id}
               type="button"
               aria-pressed={order === o.id}
               onClick={() => setOrder(o.id)}
-              className={`${BUTTON} px-3 ${order === o.id ? 'border-current font-bold' : ''}`}
+              className={`${BUTTON} ${order === o.id ? 'border-current! font-bold' : ''}`}
             >
               {o.label}
             </button>

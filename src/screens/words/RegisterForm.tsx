@@ -12,15 +12,19 @@ import type { Word } from '../../lib/types.ts'
 import { manualWord } from '../../lib/words.ts'
 
 const MANUAL_HINT = '意味を自分で入れて保存し、あとで AI で補えます'
+// 「作る」の返事を待つ間に一覧の「編集」を開いていたとき（確認の画面で置き換えず、打ちかけの直しを残す）
+const EDITING_OPEN = '編集を閉じてから、もう一度「作る」を押してください'
 const LONG_TERM_WORDS = 10
 
-export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) => void }) {
+// onConfirm は確認の画面を開いたら true、編集の画面を開いているので開かなかったら false を返す
+export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) => boolean }) {
   const { settings, words } = useAppData()
   const [term, setTerm] = useState('')
   const [context, setContext] = useState('')
   const [meaning, setMeaning] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState('')
+  const [notice, setNotice] = useState('')
   const abort = useRef<AbortController | null>(null)
 
   // 画面を離れたら AI の呼び出しを止める
@@ -29,12 +33,17 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
   const termWords = term.trim() === '' ? 0 : term.trim().split(/\s+/).length
   const same = term.trim() === '' ? [] : words.filter((w) => sameEn(w.term, term))
 
+  const openConfirm = (word: Word): void => {
+    setNotice(onConfirm(word) ? '' : EDITING_OPEN)
+  }
+
   const create = async (): Promise<void> => {
     if (term.trim() === '' || busy) return
     const ctl = new AbortController()
     abort.current = ctl
     setBusy(true)
     setFailure('')
+    setNotice('')
     try {
       const parts = fillPrompt({ term, context, meaning })
       const raw = await callGemini({
@@ -46,7 +55,7 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
       })
       const fill = parseFill(raw)
       const now = new Date()
-      onConfirm(applyFill(manualWord({ term, context, meaning }, now), fill, 'new', now))
+      openConfirm(applyFill(manualWord({ term, context, meaning }, now), fill, 'new', now))
     } catch (e) {
       if (ctl.signal.aborted) return
       const kind = e instanceof GeminiError ? e.kind : 'bad-response'
@@ -90,7 +99,7 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
         {failure && (
           <button
             type="button"
-            onClick={() => onConfirm(manualWord({ term, context, meaning }, new Date()))}
+            onClick={() => openConfirm(manualWord({ term, context, meaning }, new Date()))}
             disabled={meaning.trim() === '' || term.trim() === ''}
             className={BUTTON}
           >
@@ -99,6 +108,7 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
         )}
       </div>
       {failure && <p className="mt-2">{failure}</p>}
+      {notice && <p className="mt-2">{notice}</p>}
     </section>
   )
 }

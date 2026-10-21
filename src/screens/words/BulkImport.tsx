@@ -3,16 +3,19 @@
 import { useState } from 'react'
 import { useAppData } from '../../app/useAppData.ts'
 import { AREA, BUTTON, NOTE, SAVE_FAILED } from '../../components/ui.ts'
-import { CLAUDE_PROMPT, parseBulk } from '../../lib/bulk.ts'
+import { CLAUDE_PROMPT, parseBulk, type ParseBulkResult } from '../../lib/bulk.ts'
 import { addWords } from '../../lib/db.ts'
 import { copyText } from '../../lib/share.ts'
+
+// 書けた後に、一覧の読み直しだけ失敗したとき
+const RELOAD_FAILED = '読み込みました。一覧を読み直せないので、アプリを閉じて開き直してください'
 
 function skippedText(skipped: number): string {
   return skipped > 0 ? `（${skipped} 個は同じ語があったので飛ばしました）` : ''
 }
 
 export default function BulkImport() {
-  const { db, words, reload } = useAppData()
+  const { db, reload } = useAppData()
   const [text, setText] = useState('')
   const [status, setStatus] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
@@ -24,23 +27,34 @@ export default function BulkImport() {
 
   const load = async (): Promise<void> => {
     const now = new Date()
-    const parsed = parseBulk(text, words, now)
-    if (!parsed.ok) {
-      setStatus(parsed.error)
-      return
-    }
-    if (parsed.words.length === 0) {
-      setStatus(parsed.skipped > 0 ? `0 個読み込みました${skippedText(parsed.skipped)}` : '読み込む語がありませんでした')
-      return
-    }
     setBusy(true)
     try {
-      await addWords(db, parsed.words, now)
-      await reload()
+      let parsed: ParseBulkResult
+      try {
+        // 同じ語の見分けは、画面の一覧ではなく、押した時点で DB から読んだ語で行う（書けた後に一覧を読み直せず、
+        // 画面の一覧が古いまま押し直しても、同じ語を 2 回入れないように）
+        parsed = parseBulk(text, await db.words.toArray(), now)
+        if (parsed.ok && parsed.words.length > 0) await addWords(db, parsed.words, now)
+      } catch {
+        setStatus(SAVE_FAILED)
+        return
+      }
+      if (!parsed.ok) {
+        setStatus(parsed.error)
+        return
+      }
+      if (parsed.words.length === 0) {
+        setStatus(parsed.skipped > 0 ? `0 個読み込みました${skippedText(parsed.skipped)}` : '読み込む語がありませんでした')
+        return
+      }
+      // 書けたら、すぐに貼った文字を消す（この後の一覧の読み直しが失敗しても、同じ JSON のまま押し直せないように）
       setText('')
       setStatus(`${parsed.words.length} 個読み込みました${skippedText(parsed.skipped)}`)
-    } catch {
-      setStatus(SAVE_FAILED)
+      try {
+        await reload()
+      } catch {
+        setStatus(RELOAD_FAILED)
+      }
     } finally {
       setBusy(false)
     }

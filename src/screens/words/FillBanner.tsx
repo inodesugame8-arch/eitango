@@ -11,13 +11,22 @@ import { applyFill } from '../../lib/fill.ts'
 import { callGemini, fillErrorText, GeminiError } from '../../lib/gemini/client.ts'
 import { fillPrompt, parseFill } from '../../lib/gemini/prompts.ts'
 
+// 止めたら待たずに戻る。待ち始める前に止めてあれば（読み直しの途中で画面を離れたとき）、すぐに戻る
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer)
+    if (signal.aborted) {
       resolve()
-    })
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
   })
 }
 
@@ -47,16 +56,22 @@ export default function FillBanner() {
     try {
       for (const w of list) {
         if (ctl.signal.aborted) return
-        // 送る前に今の行を読み直す。押した後に消した語・もう補った語は、呼ばずに飛ばす。直した語は直した中身で送る
-        // （押した時点の写しを送らない。名前を消した英文の古い写しを送らないため）
-        const cur = await db.words.get(w.id)
-        if (!cur || !cur.needsAi) {
+        // 待つ前に今の行を読み直す。押した後に消した語・もう補った語は、待たずに飛ばす
+        const before = await db.words.get(w.id)
+        if (!before || !before.needsAi) {
           skipped += 1
           continue
         }
         // 呼ぶ間隔をあける（1 分あたりの回数の上限に当たらないように）
         if (called) await sleep(FILL_INTERVAL_MS, ctl.signal)
         if (ctl.signal.aborted) return
+        // 送る直前にもう一度読み直す。待っている間に消した語は呼ばずに飛ばし、直した語は直した中身で送る
+        // （待つ前に読んだ写しを送らない。名前を消した英文の古い写しを送らないため）
+        const cur = await db.words.get(w.id)
+        if (!cur || !cur.needsAi) {
+          skipped += 1
+          continue
+        }
         setStatus(`補っています（${done + skipped + 1}/${list.length}）`)
         called = true
         const raw = await callGemini({
@@ -84,8 +99,12 @@ export default function FillBanner() {
     } catch (e) {
       if (ctl.signal.aborted) return
       const reason = e instanceof GeminiError ? fillErrorText(e.kind) : SAVE_FAILED
-      // 残りは、処理した数（補った数と飛ばした数の和）から出す
-      setStatus(`残り ${list.length - done - skipped} 個。${reason}`)
+      // 残りは、止まった後に読み直した今の語のうち、AI で補う前の印の付いた語の数（上の「AI で補う語が N 個」と同じ数）。
+      // 途中で消した語は数えず、直したので書かずに飛ばした語（印が残る）は数える。読み直せないときは、押した時点の
+      // 一覧から処理した数（補った数と飛ばした数の和）を引く
+      const next = await reload().catch(() => undefined)
+      const left = next ? next.words.filter((x) => x.needsAi).length : list.length - done - skipped
+      setStatus(`残り ${left} 個。${reason}`)
     } finally {
       if (abort.current === ctl) abort.current = null
       setRunning(false)

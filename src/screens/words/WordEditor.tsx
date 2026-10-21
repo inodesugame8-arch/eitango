@@ -1,8 +1,10 @@
 // 登録の確認の画面と、編集の画面（仕様書 8-1・9-4）。Word の項目を直す（id・作った日時・AI で補う前の印を除く）。
 // 一覧の項目は 1 行に 1 つ。保存のときに applyEdit で決まり（英語か出会った英文を変えたら穴埋めを空にして
-// AI で補う前の印を付ける、フレーズにしたら穴埋めを空にする、許容訳に意味を入れる）を当てはめる
+// AI で補う前の印を付ける、フレーズにしたら穴埋めを空にする、許容訳に意味を入れる）を当てはめる。
+// 許容訳と紛らわしい誤訳の両方にある訳があれば、保存せずに知らせる
 import { useState, type ReactNode } from 'react'
 import { AREA, BUTTON, EN_INPUT, FIELD, JA_INPUT, NOTE, PRIMARY, SAVE_FAILED } from '../../components/ui.ts'
+import { sameJa } from '../../lib/match.ts'
 import type { Kind, Word } from '../../lib/types.ts'
 import { applyEdit } from '../../lib/words.ts'
 
@@ -92,10 +94,18 @@ export default function WordEditor({
       cloze: d.cloze,
       clozeAnswer: d.clozeAnswer,
     }
+    const next = applyEdit(original, draft, new Date())
+    // 許容訳（意味を含む）と紛らわしい誤訳の両方にある訳（7-1 の日本語の正規化で同じもの）があれば保存しない。
+    // 照合で ○ になり、誤訳の側が効かないため。どちらを残すかは本人が決める
+    const both = [...new Set(next.nearMiss.filter((t) => next.accepted.some((a) => sameJa(a, t))))]
+    if (both.length > 0) {
+      setError(`${both.map((t) => `「${t}」`).join('')}が許容訳と紛らわしい誤訳の両方にあります。どちらかから消してください`)
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await onSave(applyEdit(original, draft, new Date()))
+      await onSave(next)
     } catch {
       setError(SAVE_FAILED)
       setSaving(false)

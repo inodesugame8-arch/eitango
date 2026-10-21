@@ -42,7 +42,8 @@ export default function WordRow({
           className="flex min-h-11 flex-1 items-center gap-2 py-2 text-left"
         >
           <Icon name="chevron" className={`shrink-0 ${open ? 'rotate-90' : ''}`} />
-          <span lang="en" className="break-words">
+          {/* 切れ目の無い長い英語もどこででも折り返す（break-words では行が押し広げられ、再生ボタンが外に出る） */}
+          <span lang="en" className="wrap-anywhere">
             {word.term}
           </span>
         </button>
