@@ -369,19 +369,16 @@ describe('buildToday: 新しい問題（仕様書 6-3 の 3）', () => {
     expect(plan.queue.every((id) => id.endsWith(':en-ja'))).toBe(true)
   })
 
-  it('1 日目に新しい英→日で ×→○→○ と答えた語の 2 日目: 英→日が復習で来て、日→英の新しい候補は外れ、空いた枠は次に古い候補で埋まる', () => {
+  it('1 日目に新しい英→日で ×→○ と答えた語と ○ と答えた語の 2 日目: 英→日が復習で来て、日→英の新しい候補は外れ、空いた枠は次に古い候補で埋まる', () => {
     const w = world()
     addWord(w, 'x', at(2026, 10, 19, 12, 0))
     addWord(w, 'y', at(2026, 10, 19, 12, 1))
     addWord(w, 'z', at(2026, 10, 19, 12, 2))
-    // 1 日目（10 月 20 日）
+    // 1 日目（10 月 20 日）。× の後の ○ で卒業し、○ だけの語は 1 回で卒業する（学習ステップは 10 分の 1 段）
     solve(w, 'x:en-ja', at(2026, 10, 20, 21, 0), 1)
     solve(w, 'x:en-ja', at(2026, 10, 20, 21, 3), 3)
-    solve(w, 'x:en-ja', at(2026, 10, 20, 21, 14), 3)
     solve(w, 'y:en-ja', at(2026, 10, 20, 21, 20), 3)
-    solve(w, 'y:en-ja', at(2026, 10, 20, 21, 31), 3)
     solve(w, 'z:en-ja', at(2026, 10, 20, 21, 40), 3)
-    solve(w, 'z:en-ja', at(2026, 10, 20, 21, 51), 3)
     expect(record(w, 'x:en-ja').card.state).toBe(State.Review)
     expect(dayOf(record(w, 'x:en-ja').card.due)).toBe('2026-10-21')
     expect(dayOf(record(w, 'y:en-ja').card.due)).toBe('2026-10-22')
@@ -444,7 +441,7 @@ describe('buildToday: 並び（仕様書 6-3 の 5）', () => {
     const pending = new Set<string>()
     solved.forEach((id, i) => {
       solve(w, id, at(2026, 10, 20, 9, 1 + i), 3)
-      // 新しいカードは学習ステップ（もう一度出す予定）に入る
+      // 学習中のままのカード（Hard・Again のとき）は、もう一度出す予定に入る（Good で解いた新しいカードは卒業する）
       if (record(w, id).card.state === State.Learning) pending.add(id)
     })
     const again = buildToday(input(w, at(2026, 10, 20, 9, 8), { pendingCardIds: pending }))
@@ -500,7 +497,8 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
   })
 
   // 新しいカードの問題を 10 月 21 日 3 時 58 分（アプリの日は 10 月 20 日）に出し、朝 4 時をまたいだ 4 時 01 分に答えた
-  // （解答記録の日は 10 月 21 日・解く前は New）。前の日の予定は捨てられ、pendingCardIds には無い。今日の復習は 2 枚
+  // （解答記録の日は 10 月 21 日・解く前は New）。前の日の予定は捨てられ、pendingCardIds には無い。今日の復習は 2 枚。
+  // rating が 2（Hard）なら学習中のまま 15 分後、1（Again）なら 10 分後、3（Good）なら卒業する
   function crossedWorld(rating: RatingValue): World {
     const w = world()
     addReviewWords(w, 'r', 2, at(2026, 10, 21, 9))
@@ -510,7 +508,7 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
   }
 
   it('今日初めて解いた新しいカードで、学習中・出題日が今より後なら stepEntries に入る（80 枚と、今日まだ解いていない復習には数えない）', () => {
-    const w = crossedWorld(3)
+    const w = crossedWorld(2)
     const due = record(w, 'n:en-ja').card.due
     expect(record(w, 'n:en-ja').card.state).toBe(State.Learning)
     expect(dayOf(due)).toBe('2026-10-21')
@@ -533,7 +531,7 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
   })
 
   it('今日初めて解いた新しいカードも、もう一度出す予定に入っていれば並びにも stepEntries にも入らない', () => {
-    const w = crossedWorld(3)
+    const w = crossedWorld(2)
     const due = record(w, 'n:en-ja').card.due
     for (const t of [at(2026, 10, 21, 4, 2), new Date(due.getTime() + MIN)]) {
       const plan = buildToday(input(w, t, { pendingCardIds: new Set(['n:en-ja']) }))
@@ -542,6 +540,16 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
       expect(plan.reviewTotal).toBe(2)
       expect(plan.reviewRemaining).toBe(2)
     }
+  })
+
+  it('今日初めて解いた新しいカードを Good で解いたら卒業し、並びにも stepEntries にも入らない（80 枚と、今日まだ解いていない復習には数えない）', () => {
+    const w = crossedWorld(3)
+    expect(record(w, 'n:en-ja').card.state).toBe(State.Review)
+    const plan = buildToday(input(w, at(2026, 10, 21, 4, 2)))
+    expect(plan.queue).not.toContain('n:en-ja')
+    expect(plan.stepEntries).toEqual([])
+    expect(plan.reviewTotal).toBe(2)
+    expect(plan.reviewRemaining).toBe(2)
   })
 
   it('練習の解答記録は今日解いた数に入れない', () => {

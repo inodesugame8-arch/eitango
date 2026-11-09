@@ -11,12 +11,10 @@ function at(y: number, mo: number, d: number, h = 0, mi = 0): Date {
   return new Date(y, mo - 1, d, h, mi)
 }
 
-// 新しいカードを t1 に Good、t1 + 10 分に Good で、Review の状態にしたカード
+// 新しいカードを t1 に Good で解き、Review の状態にしたカード（学習ステップは 10 分の 1 段なので、Good 1 回で卒業する）
 function reviewStateCard(t1: Date): { card: Card; lastAt: Date } {
   const first = reviewCard(newCard(t1), t1, 3)
-  const t2 = new Date(t1.getTime() + 10 * MIN)
-  const second = reviewCard(first.card, t2, 3)
-  return { card: second.card, lastAt: t2 }
+  return { card: first.card, lastAt: t1 }
 }
 
 describe('fsrsShiftMs', () => {
@@ -75,17 +73,47 @@ describe('reviewCard（ts-fsrs の日の数え方をアプリの朝 4 時に合�
     expect(r.card.last_review?.getTime()).toBe(t.getTime())
   })
 
-  it('返ったカードの due もずらさない時刻（新しいカードの Good は 10 分後、Again は 1 分後）', () => {
+  it('返ったカードの due もずらさない時刻（新しいカードの Again は 10 分後、Hard は 15 分後、Good は 2 日後）', () => {
     const t = at(2026, 10, 20, 23, 0)
-    expect(reviewCard(newCard(t), t, 3).card.due.getTime()).toBe(t.getTime() + 10 * MIN)
-    expect(reviewCard(newCard(t), t, 1).card.due.getTime()).toBe(t.getTime() + 1 * MIN)
+    expect(reviewCard(newCard(t), t, 1).card.due.getTime()).toBe(t.getTime() + 10 * MIN)
+    expect(reviewCard(newCard(t), t, 2).card.due.getTime()).toBe(t.getTime() + 15 * MIN)
+    expect(reviewCard(newCard(t), t, 3).card.due.getTime()).toBe(t.getTime() + 2 * DAY)
   })
 
-  it('Good を 2 回で Review の状態になり、出題日はアプリの日で 2 日後', () => {
+  it('新しいカードは Good 1 回で Review の状態になり、出題日はアプリの日で 2 日後（迷わず ○ なら、その日は 1 回）', () => {
     const t1 = at(2026, 10, 20, 23, 0)
     const { card, lastAt } = reviewStateCard(t1)
     expect(card.state).toBe(State.Review)
     expect(dayDiff(dayOf(lastAt), dueDay(card))).toBe(2)
+  })
+
+  it('Again・Hard の後は学習中のまま。学習中のカードを Good で解くと卒業し、出題日は次の日以降', () => {
+    const t1 = at(2026, 10, 20, 21, 0)
+    for (const first of [1, 2] as const) {
+      const learning = reviewCard(newCard(t1), t1, first).card
+      expect(learning.state).toBe(State.Learning)
+      const graduated = reviewCard(learning, learning.due, 3).card
+      expect(graduated.state).toBe(State.Review)
+      expect(dayDiff(dayOf(learning.due), dueDay(graduated))).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('Hard を続けても段は進まず、15 分ごとに学習中のまま', () => {
+    const t1 = at(2026, 10, 20, 21, 0)
+    const h1 = reviewCard(newCard(t1), t1, 2).card
+    const h2 = reviewCard(h1, h1.due, 2).card
+    expect(h2.state).toBe(State.Learning)
+    expect(h2.due.getTime()).toBe(h1.due.getTime() + 15 * MIN)
+  })
+
+  it('直す前の版（学習ステップ 1 分・10 分）で 2 段目にいたカードは、次に解くと評価に関わらず卒業する（設計書 2026-11-09 の 4-5）', () => {
+    const t1 = at(2026, 10, 20, 21, 0)
+    // ts-fsrs の既定（1 分・10 分）で New → Good にしたカード（直す前の版で 10 分後の 2 回目を待っているカード）
+    const old = fsrs({ enable_fuzz: true }).next(newCard(t1), t1, Rating.Good).card
+    expect([old.state, old.learning_steps]).toEqual([State.Learning, 1])
+    for (const r of [1, 2, 3] as const) {
+      expect(reviewCard(old, old.due, r).card.state).toBe(State.Review)
+    }
   })
 
   it('同じカード・同じ時刻・同じ評価なら同じ結果（間隔のゆらぎがあっても）', () => {
@@ -113,7 +141,8 @@ describe('isNew・isReviewState・dueDay', () => {
     const c = newCard(t)
     expect(isNew(c)).toBe(true)
     expect(isReviewState(c)).toBe(false)
-    const learning = reviewCard(c, t, 3).card
+    // Hard（遅い ○・△）なら学習中のまま
+    const learning = reviewCard(c, t, 2).card
     expect(learning.state).toBe(State.Learning)
     expect(isNew(learning)).toBe(false)
     expect(isReviewState(learning)).toBe(false)

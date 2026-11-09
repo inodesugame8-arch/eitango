@@ -234,10 +234,10 @@ describe('pickNext（仕様書 6-4「次の 1 問の選び方」）', () => {
     expect(pickNext(s, [], now)).toEqual({ kind: 'done' })
   })
 
-  it('3 時 55 分に ○ で出題日が 4 時 05 分（次のアプリの日）になったカードは前倒ししない', () => {
+  it('3 時 55 分に新しいカードを × で答え、出題日が 4 時 05 分（次のアプリの日）になったら前倒ししない', () => {
     const t = at(2026, 10, 21, 3, 55)
     const s0 = newSession('2026-10-20')
-    const r = answer(s0, 'a:en-ja', newCard(t), t, 'correct')
+    const r = answer(s0, 'a:en-ja', newCard(t), t, 'wrong')
     expect(r.card.state).toBe(State.Learning)
     expect(r.card.due).toEqual(at(2026, 10, 21, 4, 5))
     expect(r.session.pending).toEqual([])
@@ -266,12 +266,26 @@ describe('recordAnswer（仕様書 6-4 の表）', () => {
     expect(r.session.seq).toBe(1)
   })
 
-  it('△・○ で出題日が今日（学習中のカード）: step（FSRS の出題日）', () => {
-    const r = answer(newSession(DAY), 'a:en-ja', newCard(now), now, 'correct')
-    expect(r.card.state).toBe(State.Learning)
-    expect(r.session.pending).toEqual([{ cardId: 'a:en-ja', reason: 'step', seq: 0, dueAt: r.card.due }])
+  it('△ で出題日が今日（学習中のカード）: step（FSRS の出題日。15 分後）', () => {
     const h = answer(newSession(DAY), 'b:en-ja', newCard(now), now, 'close')
+    expect(h.card.state).toBe(State.Learning)
+    expect(h.card.due).toEqual(new Date(now.getTime() + 15 * MIN))
     expect(h.session.pending).toEqual([{ cardId: 'b:en-ja', reason: 'step', seq: 0, dueAt: h.card.due }])
+  })
+
+  it('新しいカードを ○: 卒業して（Review の状態）、その日のうちにはもう出さない', () => {
+    const r = answer(newSession(DAY), 'a:en-ja', newCard(now), now, 'correct')
+    expect(r.card.state).toBe(State.Review)
+    expect(r.session.pending).toEqual([])
+    expect(r.session.seq).toBe(0)
+  })
+
+  it('学習中のカード（△ の後）を ○: 卒業して、予定から消える', () => {
+    const h = answer(newSession(DAY), 'a:en-ja', newCard(now), now, 'close')
+    const g = answer(h.session, 'a:en-ja', h.card, h.card.due, 'correct')
+    expect(g.card.state).toBe(State.Review)
+    expect(g.session.pending).toEqual([])
+    expect(g.session.answers).toBe(2)
   })
 
   it('△ で出題日が明日以降（Review の状態のカード）: practice（5 問後に 1 回）', () => {
@@ -280,11 +294,11 @@ describe('recordAnswer（仕様書 6-4 の表）', () => {
     expect(r.session.practiced).toEqual(['a:en-ja'])
   })
 
-  it('3 時 58 分に学習中のカードを △ で答え、出題日が 4 時 04 分（次のアプリの日）になったら練習を入れない', () => {
+  it('3 時 58 分に学習中のカードを △ で答え、出題日が 4 時 13 分（次のアプリの日）になったら練習を入れない', () => {
     const t = at(2026, 10, 21, 3, 58)
     const r = answer(newSession('2026-10-20'), 'a:en-ja', newCard(t), t, 'close')
     expect(r.card.state).toBe(State.Learning)
-    expect(r.card.due).toEqual(at(2026, 10, 21, 4, 4))
+    expect(r.card.due).toEqual(at(2026, 10, 21, 4, 13))
     expect(r.session.pending).toEqual([])
     expect(r.session.practiced).toEqual([])
     expect(r.session.seq).toBe(0)
@@ -324,7 +338,7 @@ describe('recordAnswer（仕様書 6-4 の表）', () => {
   })
 
   it('同じカードの予定はまず消してから足す（学習ステップ → × で again に置き換わる）', () => {
-    const r1 = answer(newSession(DAY), 'a:en-ja', newCard(now), now, 'correct')
+    const r1 = answer(newSession(DAY), 'a:en-ja', newCard(now), now, 'close')
     const t2 = r1.card.due
     const r2 = answer(r1.session, 'a:en-ja', r1.card, t2, 'wrong')
     expect(r2.session.pending).toEqual([{ cardId: 'a:en-ja', reason: 'again', seq: 1, afterAnswers: 5 }])

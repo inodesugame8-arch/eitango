@@ -9,8 +9,10 @@ import type { RatingValue } from './types.ts'
 
 const HOUR_MS = 3_600_000
 
-// 目標正答率 0.9・学習ステップ 1 分と 10 分・再学習ステップ 10 分は ts-fsrs の既定。違うのは fuzz だけ
-const scheduler = fsrs({ enable_fuzz: true })
+// 目標正答率 0.9・再学習ステップ 10 分は ts-fsrs の既定。違うのは fuzz と学習ステップ（既定は 1 分・10 分）。
+// 学習ステップは 10 分の 1 段: 新しいカードは迷わず ○（Good）を 1 回取ったら卒業し、その日はもう出さない。
+// 遅い ○・△（Hard）は 15 分後、×（Again）は 10 分後（アプリは 3 問後）に、もう一度出す（設計書 2026-11-09 の 4 章）
+const scheduler = fsrs({ enable_fuzz: true, learning_steps: ['10m'] })
 
 // ずらす幅 =（端末と世界標準時の時差 − 4 時間）。日本なら 5 時間
 export function fsrsShiftMs(at: Date): number {

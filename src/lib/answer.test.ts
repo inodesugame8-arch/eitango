@@ -6,6 +6,7 @@ import { isClockError, newCard, reviewCard } from './srs.ts'
 import type { CardRecord } from './types.ts'
 
 const MIN = 60_000
+const DAY = 86_400_000
 
 // 端末の時計（テストでは Asia/Tokyo）での日時。月は 1 から数える
 function at(y: number, mo: number, d: number, h = 0, mi = 0): Date {
@@ -19,11 +20,9 @@ function fresh(): CardRecord {
   return { id: 'w1:en-ja', wordId: 'w1', direction: 'en-ja', card: newCard(created) }
 }
 
-// Review の状態のカード（10/18 に Good を 2 回）
+// Review の状態のカード（10/18 に Good を 1 回。学習ステップは 10 分の 1 段なので、Good 1 回で卒業する）
 function reviewed(): CardRecord {
-  const first = reviewCard(newCard(created), created, 3).card
-  const second = reviewCard(first, new Date(created.getTime() + 10 * MIN), 3).card
-  return { ...fresh(), card: second }
+  return { ...fresh(), card: reviewCard(newCard(created), created, 3).card }
 }
 
 function input(over: Partial<SettleInput> = {}): SettleInput {
@@ -46,13 +45,13 @@ function input(over: Partial<SettleInput> = {}): SettleInput {
 }
 
 describe('settleAnswer（判定が決まったら FSRS に渡し、カード・解答記録・予定を作る。仕様書 6-4・6-5）', () => {
-  it('新しいカードを ○（ふつうの速さ）: Good で 10 分後、解答記録と学習ステップの予定ができる', () => {
+  it('新しいカードを ○（ふつうの速さ）: Good で卒業し（Review の状態で 2 日後）、もう一度出す予定は足さない。解答記録ができる', () => {
     const before = fresh()
     const out = settleAnswer(input({ record: before }))
     expect(out.rating).toBe(3)
     expect(out.card.id).toBe('w1:en-ja')
-    expect(out.card.card.state).toBe(State.Learning)
-    expect(out.card.card.due).toEqual(new Date(t.getTime() + 10 * MIN))
+    expect(out.card.card.state).toBe(State.Review)
+    expect(out.card.card.due).toEqual(new Date(t.getTime() + 2 * DAY))
     expect(out.review).toEqual({
       id: 'r1',
       cardId: 'w1:en-ja',
@@ -72,6 +71,14 @@ describe('settleAnswer（判定が決まったら FSRS に渡し、カード・�
       before: before.card,
     })
     expect(out.session.answers).toBe(1)
+    expect(out.session.pending).toEqual([])
+  })
+
+  it('新しいカードを ○（遅い）: Hard で 15 分後、学習ステップの予定ができる', () => {
+    const out = settleAnswer(input({ thinkMs: 10_000 }))
+    expect(out.rating).toBe(2)
+    expect(out.card.card.state).toBe(State.Learning)
+    expect(out.card.card.due).toEqual(new Date(t.getTime() + 15 * MIN))
     expect(out.session.pending).toEqual([{ cardId: 'w1:en-ja', reason: 'step', seq: 0, dueAt: out.card.card.due }])
   })
 
@@ -115,7 +122,11 @@ describe('settleAnswer（判定が決まったら FSRS に渡し、カード・�
   })
 
   it('朝 4 時をまたいで答えると、解答記録の日は解いた時刻のアプリの日。予定は答える前の日のままで、次の日に出るカードは入れない', () => {
-    const out = settleAnswer(input({ sessionBefore: newSession('2026-10-20'), at: at(2026, 10, 21, 4, 1) }))
+    // 遅い ○（Hard）で学習中のまま、出題日が 15 分後の 4 時 16 分（次のアプリの日）になるカード
+    const out = settleAnswer(
+      input({ sessionBefore: newSession('2026-10-20'), at: at(2026, 10, 21, 4, 1), thinkMs: 10_000 }),
+    )
+    expect(out.card.card.state).toBe(State.Learning)
     expect(out.review.day).toBe('2026-10-21')
     expect(out.session.day).toBe('2026-10-20')
     expect(out.session.pending).toEqual([])
