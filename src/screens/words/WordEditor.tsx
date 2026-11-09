@@ -16,7 +16,7 @@ import type { Word } from '../../lib/types.ts'
 import { applyEdit, type AiInputs } from '../../lib/words.ts'
 
 const lines = (text: string): string[] => text.split('\n')
-const REDO_NOTE = '英語・出会った英文・意味をもとに、この画面で直していない欄を作り直します（保存はまだしません）'
+const REDO_NOTE = '英語・出会った英文・意味をもとに、この画面で直していない欄と空の欄を作り直します（保存はまだしません）'
 const REDO_DONE = '作り直しました。保存はまだです'
 
 function Field({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
@@ -42,7 +42,7 @@ export default function WordEditor({
 }) {
   const { settings } = useAppData()
   const [d, setD] = useState<EditorFields>(() => toFields(original))
-  // 直した欄を決めるときに比べる値（開いたときの値。作り直した後は、作り直した直後の値）
+  // 直した欄を決めるときに比べる値（開いたときの値。作り直した後は、作り直した欄だけ新しい値に替え、残した欄は前のまま）
   const [base, setBase] = useState<EditorFields>(() => toFields(original))
   // 最後に作り直したときに送った英語と出会った英文（保存のときに applyEdit に渡す）
   const [aiFor, setAiFor] = useState<AiInputs | undefined>(undefined)
@@ -75,9 +75,9 @@ export default function WordEditor({
         timeoutMs: FILL_TIMEOUT_MS,
         signal: ctl.signal,
       })
-      const next = redoFields(sent, base, parseFill(raw))
-      setD(next)
-      setBase(next)
+      const redone = redoFields(sent, base, parseFill(raw))
+      setD(redone.fields)
+      setBase(redone.base)
       setAiFor({ term: sent.term, context: sent.context })
       setRedoMessage(REDO_DONE)
     } catch (e) {

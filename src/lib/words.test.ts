@@ -197,6 +197,24 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     const original = word({ context: undefined, cloze: undefined, clozeAnswer: undefined, needsAi: true })
     expect(applyEdit(original, { ...original }, now, { term: 'give up', context: '' }).needsAi).toBe(false)
   })
+
+  it('作り直したときのままでも、種類をフレーズにしたら穴埋めは空にする（AI で補う前の印は外す）', () => {
+    const original = word({ needsAi: true })
+    const out = applyEdit(original, { ...original, kind: 'phrase' }, now, {
+      term: 'give up',
+      context: "don't give up, we can still win",
+    })
+    expect(['cloze' in out, 'clozeAnswer' in out, out.needsAi]).toEqual([false, false, false])
+  })
+
+  it('英語を変えてから作り直したときも、許容する英語にある元の英語は新しい英語に替える', () => {
+    const original = word({ term: 'give in', acceptedEn: ['give in', 'quit'] })
+    const out = applyEdit(original, { ...original, term: 'give up' }, now, {
+      term: 'give up',
+      context: "don't give up, we can still win",
+    })
+    expect([out.acceptedEn, out.cloze, out.needsAi]).toEqual([['give up', 'quit'], "don't ___ ___, we can still win", false])
+  })
 })
 
 describe('sortWords（一覧の並び。仕様書 5-2）', () => {
