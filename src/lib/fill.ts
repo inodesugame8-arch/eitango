@@ -18,8 +18,11 @@ function addAll(list: readonly string[], more: readonly string[], same: Same, no
   return out
 }
 
-const addJa = (list: readonly string[], more: readonly string[]): string[] => addAll(list, more, sameJa, normalizeJa)
-const addEn = (list: readonly string[], more: readonly string[]): string[] => addAll(list, more, sameEn, normalizeEn)
+// 日本語の一覧（許容訳・紛らわしい誤訳）と英語の一覧（許容する英語）に足す。redo.ts の「AI で作り直す」でも使う
+export const addJa = (list: readonly string[], more: readonly string[]): string[] =>
+  addAll(list, more, sameJa, normalizeJa)
+export const addEn = (list: readonly string[], more: readonly string[]): string[] =>
+  addAll(list, more, sameEn, normalizeEn)
 
 function empty(text: string | undefined): boolean {
   return text === undefined || text.trim() === ''
