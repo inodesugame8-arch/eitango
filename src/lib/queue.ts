@@ -168,10 +168,10 @@ export function buildToday(input: TodayInput): TodayPlan {
   }
 }
 
-// 目安の時間（分）=（復習 + 新しいカード × 2.6）× 20 秒。切り上げ（仕様書 5-1）
+// 目安の時間（分）=（復習 + 新しいカード × 1.5）× 20 秒。切り上げ（仕様書 5-1。1.5 は config.ts の NEW_CARD_FACTOR）
 export function estimateMinutes(reviewRemaining: number, newRemaining: number): number {
   const seconds = (reviewRemaining + newRemaining * NEW_CARD_FACTOR) * SECONDS_PER_CARD
-  // 2.6 × 枚数の小数の誤差で 1 分多くならないよう、秒に丸めてから分にする
+  // 倍率 × 枚数の小数の誤差で 1 分多くならないよう、秒に丸めてから分にする
   return Math.ceil(Math.round(seconds) / 60)
 }
 

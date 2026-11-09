@@ -5,7 +5,9 @@ export const AGAIN_AFTER_ANSWERS = 3
 export const PRACTICE_AFTER_ANSWERS = 5
 export const LEARN_AHEAD_MS = 20 * 60_000
 export const SECONDS_PER_CARD = 20
-export const NEW_CARD_FACTOR = 2.6
+// 新しいカード 1 枚が、その日に出る回数の目安（仕様書 5-1）。最初の正答率 0.7・正解のうち Hard 15%・同じ日の 2 回目以降は
+// 正解とした期待値。学習ステップ 10 分の 1 段で 1.48 回（2026-11-09 から。前の 1 分・10 分では 2.65 回で 2.6 にしていた）
+export const NEW_CARD_FACTOR = 1.5
 export const DEFAULT_NEW_PER_DAY = 5
 export const EXPORT_REMIND_DAYS = 7
 export const AHEAD_PER_PRESS = 10 // 「先取りで復習する」を 1 回押して足す枚数（仕様書 6-9）

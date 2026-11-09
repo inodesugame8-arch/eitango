@@ -574,9 +574,9 @@ describe('buildToday: 学習中のカードと、もう一度出す予定', () =
   })
 })
 
-describe('estimateMinutes（仕様書 5-1: （復習 + 新しいカード × 2.6）× 20 秒、切り上げ）', () => {
-  it('復習 42 枚・新しい問題 10 枚は 23 分（68 × 20 秒 = 1360 秒）', () => {
-    expect(estimateMinutes(42, 10)).toBe(23)
+describe('estimateMinutes（仕様書 5-1: （復習 + 新しいカード × 1.5）× 20 秒、切り上げ。1.5 は 2026-11-09 から。前は 2.6）', () => {
+  it('復習 42 枚・新しい問題 10 枚は 19 分（57 × 20 秒 = 1140 秒）', () => {
+    expect(estimateMinutes(42, 10)).toBe(19)
   })
 
   it('0 枚は 0 分、端数は切り上げ、ちょうどなら切り上げない', () => {
@@ -584,8 +584,8 @@ describe('estimateMinutes（仕様書 5-1: （復習 + 新しいカード × 2.6
     expect(estimateMinutes(1, 0)).toBe(1)
     expect(estimateMinutes(3, 0)).toBe(1)
     expect(estimateMinutes(4, 0)).toBe(2)
-    expect(estimateMinutes(0, 15)).toBe(13) // 39 × 20 = 780 秒 = 13 分
-    expect(estimateMinutes(0, 3)).toBe(3) // 7.8 × 20 = 156 秒
+    expect(estimateMinutes(0, 4)).toBe(2) // 6 × 20 = 120 秒 = 2 分（ちょうど）
+    expect(estimateMinutes(0, 3)).toBe(2) // 4.5 × 20 = 90 秒
   })
 })
 
