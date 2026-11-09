@@ -168,6 +168,35 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     applyEdit(original, { ...original, term: 'give in', kind: 'phrase' }, now)
     expect(original).toEqual(copy)
   })
+
+  it('作り直したときの英語・出会った英文のままなら、英語を変えていても穴埋めを残し、AI で補う前の印を外す（設計書 2026-11-09 の 3-5）', () => {
+    const original = word({ term: 'give in', needsAi: true })
+    const draft = { ...original, term: 'give up', cloze: "don't ___ ___, we can still win", clozeAnswer: 'give up' }
+    const out = applyEdit(original, draft, now, { term: 'give up', context: "don't give up, we can still win" })
+    expect([out.cloze, out.clozeAnswer, out.needsAi]).toEqual(["don't ___ ___, we can still win", 'give up', false])
+  })
+
+  it('作り直したときと比べるのは、前後の空白を除いた英語・出会った英文', () => {
+    const original = word({ needsAi: true })
+    const out = applyEdit(original, { ...original }, now, { term: ' give up ', context: " don't give up, we can still win " })
+    expect([out.cloze, out.needsAi]).toEqual(["don't ___ ___, we can still win", false])
+  })
+
+  it('作り直した後に英語か出会った英文を変えたら（元に戻した場合も）、穴埋めを空にして AI で補う前の印を付ける', () => {
+    const original = word()
+    const ai = { term: 'give in', context: "don't give up, we can still win" }
+    // 作り直した後に、英語を元の give up に戻した
+    const back = applyEdit(original, { ...original }, now, ai)
+    expect(['cloze' in back, back.needsAi]).toEqual([false, true])
+    // 作り直した後に、出会った英文を変えた
+    const changed = applyEdit(original, { ...original, term: 'give in', context: 'I give in' }, now, ai)
+    expect(['cloze' in changed, changed.needsAi]).toEqual([false, true])
+  })
+
+  it('出会った英文の無い語でも、作り直したときのままなら AI で補う前の印を外す', () => {
+    const original = word({ context: undefined, cloze: undefined, clozeAnswer: undefined, needsAi: true })
+    expect(applyEdit(original, { ...original }, now, { term: 'give up', context: '' }).needsAi).toBe(false)
+  })
 })
 
 describe('sortWords（一覧の並び。仕様書 5-2）', () => {

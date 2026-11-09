@@ -66,11 +66,19 @@ export function manualWord(
   return word
 }
 
+// 「AI で作り直す」（設計書 2026-11-09 の 3 章）で、最後に作り直したときに送った英語と出会った英文
+export interface AiInputs {
+  term: string
+  context: string
+}
+
 // 編集の保存（仕様書 9-4）。id・作った日時・AI で補う前の印は元の語のまま。
 // 英語か出会った英文を変えたら穴埋めを空にし、AI で補う前の印を付ける。種類をフレーズに変えたら穴埋めを空にする。
 // 英語を変えたら、許容する英語の元の英語も新しい英語に替える。種類を単語・熟語に変えて穴埋めが空なら 7-5 で作る。
-// 許容訳には意味を必ず入れておく（7-2）。カードの FSRS の状態はここでは触らない
-export function applyEdit(original: Word, draft: Word, now: Date): Word {
+// 許容訳には意味を必ず入れておく（7-2）。カードの FSRS の状態はここでは触らない。
+// aiFor（作り直したときの英語・英文）が今の英語・英文と同じなら、穴埋めを残し、AI で補う前の印を外す。
+// 作り直した後に変えていたら（元に戻した場合も）、英語か出会った英文を変えたときと同じにする（設計書 2026-11-09 の 3-5）
+export function applyEdit(original: Word, draft: Word, now: Date, aiFor?: AiInputs): Word {
   const out: Word = {
     id: original.id,
     term: draft.term.trim(),
@@ -112,8 +120,14 @@ export function applyEdit(original: Word, draft: Word, now: Date): Word {
       out.clozeAnswer = made.answer
     }
   }
-  // 英語か出会った英文を変えたら、穴埋めを空にし（作らずに AI に回す）、AI で補う前の印を付ける
-  if (termChanged || contextChanged) {
+  // 作り直したときの英語・出会った英文のままなら、作り直した穴埋めを残し、AI で補う前の印を外す
+  const aiCurrent =
+    aiFor !== undefined && aiFor.term.trim() === out.term && trimmed(aiFor.context) === trimmed(out.context)
+  if (aiCurrent) {
+    out.needsAi = false
+  } else if (termChanged || contextChanged || aiFor !== undefined) {
+    // 英語か出会った英文を変えたら（作り直した後に変えたときも）、穴埋めを空にし（作らずに AI に回す）、
+    // AI で補う前の印を付ける
     delete out.cloze
     delete out.clozeAnswer
     out.needsAi = true
