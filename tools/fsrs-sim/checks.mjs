@@ -1,4 +1,5 @@
 // ts-fsrs の挙動の確認 (a)〜(e)（仕様書 6-2・6-4・6-6・6-7 の検証の元）
+// 2026-10-19 の検証の記録。学習ステップは当時のアプリと同じ 1 分・10 分のまま（アプリは 2026-11-09 から 10 分の 1 段）
 // 使い方: node tools/fsrs-sim/checks.mjs
 // ts-fsrs は、このプロジェクトの node_modules のもの（package.json で版を固定）を使う
 import { createEmptyCard, FSRSVersion, fsrs, Rating, State } from 'ts-fsrs'

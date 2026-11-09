@@ -56,9 +56,10 @@ function simulate(opt) {
     stepP = null, // 学習中・再学習中のカードの正答率。null なら R（同じ日なので 1 ＝同じ日にもう一度出した分は必ず正解）
   } = opt
 
+  // 学習ステップはアプリ（src/lib/srs.ts）と同じ 10 分の 1 段（2026-11-09 から。前は 1 分・10 分）
   const f = fsrs({
     request_retention: retention,
-    learning_steps: ['1m', '10m'],
+    learning_steps: ['10m'],
     relearning_steps: ['10m'],
     enable_fuzz: true,
   })
