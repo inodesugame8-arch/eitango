@@ -38,6 +38,7 @@ function fill(over: Partial<FillResult> = {}): FillResult {
     note: 'ゲームの言葉',
     cloze: 'they ___ the sniper',
     clozeAnswer: 'nerfed',
+    check: { suspect: false, suggestion: '', reason: '' },
     ...over,
   }
 }

@@ -44,6 +44,7 @@ function fill(over: Partial<FillResult> = {}): FillResult {
     note: '遊び道具',
     cloze: 'I found a ___ under the bed',
     clozeAnswer: 'marble',
+    check: { suspect: false, suggestion: '', reason: '' },
     ...over,
   }
 }

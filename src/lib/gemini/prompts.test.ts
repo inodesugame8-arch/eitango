@@ -229,7 +229,8 @@ describe('登録の補助の指示（仕様書 8-1 の文のまま）', () => {
       [
         'あなたは英語学習者向けの単語カードを作る編集者です。学習者は英語初心者の日本人で、オンラインゲームのチャットや若者の日常会話（スラングを含む）で出会った英語を覚えたい。',
         '決まり:',
-        '- meaning: 出会った英文があれば、その文脈での意味。学習者が意味を入れていれば、それを軸にする。',
+        '- 学習者が意味を入れていれば、それが覚えたい意味。meaning はその意味をそのまま使い（言い換えない）、accepted・near_miss・accepted_en・tone・example_en・example_ja・note・cloze もすべてその意味で作る。英語にスラングなど別の意味があっても、その意味では作らない（例: salty に「塩辛い」なら、味の例文にする）。出会った英文がその意味で使われていなければ、cloze は example_en から作る。',
+        '- meaning: 出会った英文があれば、その文脈での意味（学習者が意味を入れていれば、上の決まりのとおり）。',
         '- kind: 1〜3 語の単語・熟語なら word、文・あいさつ・決まり文句なら phrase。',
         '- accepted: 正解にしてよい日本語訳を 2〜6 個。meaning を必ず含め、漢字とかなの書き分け（例: 諦める・あきらめる）も入れる。',
         '- near_miss: 紛らわしいが不正解にすべき訳を 0〜3 個。',
@@ -237,7 +238,11 @@ describe('登録の補助の指示（仕様書 8-1 の文のまま）', () => {
         '- tone: 口調と使う場面（30 字以内）。特に無ければ空文字。',
         '- example_en: 短い例文（10 語以内）。example_ja: その訳。',
         '- note: スラングか、くだけた言い方か、など（30 字以内）。無ければ空文字。',
-        '- cloze と cloze_answer: kind が word のときだけ作る。出会った英文（無ければ example_en）の中で英語に当たる語を、1 語につき ___ 1 つに置き換えた文を cloze に、置き換えた語を文の中の語形のまま cloze_answer に入れる（例: gave up）。kind が phrase なら両方空文字。英語に当たる語が文の中に 2 回以上あるときも両方空文字。',
+        '- cloze と cloze_answer: kind が word のときだけ作る。出会った英文（無ければ example_en）の中で英語に当たる語を、1 語につき ___ 1 つに置き換えた文を cloze に、置き換えた語を文の中の語形のまま cloze_answer に入れる（例: gave up）。kind が phrase なら両方空文字。英語に当たる語が文の中に 2 回以上あるときも両方空文字。出会った英文の中の語が、活用の違いではなく綴りの誤りで英語と違うときは、example_en から作る。',
+        '- term_check: 英語（学習者が打った英語）に、打ち間違い・綴りの誤り・似た語との取り違え（loose と lose など）・言い回しの覚え違いがありそうなら suspect、無ければ ok。スラング・略語・わざと崩した綴り（gg、ngl、wanna、u など）・固有名詞・ゲームの用語は誤りにしない。英語が文なら、綴りの誤りと明らかな語の取り違えだけを見て、くだけた文法は見ない。出会った英文があれば手がかりにする。迷うときは ok。',
+        '- suggestion: term_check が suspect のとき、正しいと思う英語を 1 つ（英語が文なら、直した文）。ok なら空文字。',
+        '- check_reason: term_check が suspect のとき、そう思う理由（30 字以内の日本語）。ok なら空文字。',
+        '- 英語に誤りがありそうでも、ほかの欄は、打ったとおりの英語について作る（suggestion の英語に置き換えて作らない）。',
         '- 褒め言葉や前置きは書かない。',
       ].join('\n'),
     )
@@ -249,7 +254,7 @@ describe('fillPrompt（仕様書 8-1 の内容の行）', () => {
     const p = fillPrompt({ term: 'nerf', context: 'they nerfed the sniper', meaning: '弱くする' })
     expect(p.system).toBe(FILL_SYSTEM)
     expect(p.schema).toBe(FILL_SCHEMA)
-    expect(p.user).toBe(['英語: nerf', '出会った英文: they nerfed the sniper', '学習者が入れた意味: 弱くする'].join('\n'))
+    expect(p.user).toBe(['英語: nerf', '出会った英文: they nerfed the sniper', '学習者が覚えたい意味: 弱くする'].join('\n'))
   })
 
   it('値が空の項目は行ごと省く', () => {
@@ -259,7 +264,7 @@ describe('fillPrompt（仕様書 8-1 の内容の行）', () => {
 })
 
 describe('FILL_SCHEMA（仕様書 8-1: 全部を必須）', () => {
-  it('11 の項目がすべて必須で、配列の数の決まりがある', () => {
+  it('14 の項目がすべて必須で、配列の数の決まりがある', () => {
     const s = FILL_SCHEMA as { type: string; properties: Record<string, Record<string, unknown>>; required: string[] }
     const keys = [
       'kind',
@@ -273,6 +278,9 @@ describe('FILL_SCHEMA（仕様書 8-1: 全部を必須）', () => {
       'note',
       'cloze',
       'cloze_answer',
+      'term_check',
+      'suggestion',
+      'check_reason',
     ]
     expect(s.type).toBe('object')
     expect(Object.keys(s.properties)).toEqual(keys)
@@ -281,6 +289,7 @@ describe('FILL_SCHEMA（仕様書 8-1: 全部を必須）', () => {
     expect(s.properties.accepted).toEqual({ type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 6 })
     expect(s.properties.near_miss).toEqual({ type: 'array', items: { type: 'string' }, maxItems: 3 })
     expect(s.properties.accepted_en).toEqual({ type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 4 })
+    expect(s.properties.term_check).toEqual({ type: 'string', enum: ['ok', 'suspect'] })
   })
 })
 
@@ -312,6 +321,7 @@ describe('parseFill（snake_case の返事を読む）', () => {
       note: 'ゲームの言葉',
       cloze: 'they ___ the sniper',
       clozeAnswer: 'nerfed',
+      check: { suspect: false, suggestion: '', reason: '' },
     })
   })
 
@@ -322,5 +332,27 @@ describe('parseFill（snake_case の返事を読む）', () => {
     expect(thrownKind(() => parseFill({ ...raw, near_miss: undefined }))).toBe('bad-response')
     expect(thrownKind(() => parseFill({ ...raw, cloze_answer: 1 }))).toBe('bad-response')
     expect(thrownKind(() => parseFill(null))).toBe('bad-response')
+  })
+
+  it('点検の 3 つを読む（term_check・suggestion・check_reason。設計書 2026-11-10 の 5-2）', () => {
+    expect(parseFill({ ...raw, term_check: 'suspect', suggestion: ' receive ', check_reason: 'ie と ei が逆' }).check).toEqual({
+      suspect: true,
+      suggestion: 'receive',
+      reason: 'ie と ei が逆',
+    })
+    expect(parseFill({ ...raw, term_check: 'ok', suggestion: '', check_reason: '' }).check).toEqual({
+      suspect: false,
+      suggestion: '',
+      reason: '',
+    })
+  })
+
+  it('点検の 3 つが無い・形が違うときは ok とみなし、誤りにしない（点検のせいで「作る」を失敗させない）', () => {
+    expect(parseFill(raw).check).toEqual({ suspect: false, suggestion: '', reason: '' })
+    expect(parseFill({ ...raw, term_check: 'maybe', suggestion: 3, check_reason: null }).check).toEqual({
+      suspect: false,
+      suggestion: '',
+      reason: '',
+    })
   })
 })
