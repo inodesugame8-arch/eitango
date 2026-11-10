@@ -1,5 +1,6 @@
 // 登録欄（仕様書 5-2・8-1・8-2）。「作る」で AI が残りを埋め、確認の画面（WordEditor）で直してから保存する。
 // AI が使えないときは、意味を自分で入れれば保存できる（AI で補う前の印を付け、あとで「AI で補う」で埋める）
+// 「作る」の返事の点検の結果と AI の meaning（知らせの材料。設計書 2026-11-10）も、確認の画面に渡す
 import { useEffect, useRef, useState } from 'react'
 import { useAppData } from '../../app/useAppData.ts'
 import { AREA, BUTTON, EN_INPUT, FIELD, JA_INPUT, NOTE, PRIMARY } from '../../components/ui.ts'
@@ -8,6 +9,7 @@ import { applyFill } from '../../lib/fill.ts'
 import { callGemini, fillErrorText, GeminiError } from '../../lib/gemini/client.ts'
 import { fillPrompt, parseFill } from '../../lib/gemini/prompts.ts'
 import { sameEn } from '../../lib/match.ts'
+import { notesFrom, type AiNotes } from '../../lib/notice.ts'
 import type { Word } from '../../lib/types.ts'
 import { manualWord } from '../../lib/words.ts'
 
@@ -17,7 +19,7 @@ const EDITING_OPEN = '編集を閉じてから、もう一度「作る」を押�
 const LONG_TERM_WORDS = 10
 
 // onConfirm は確認の画面を開いたら true、編集の画面を開いているので開かなかったら false を返す
-export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) => boolean }) {
+export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word, notes?: AiNotes) => boolean }) {
   const { settings, words } = useAppData()
   const [term, setTerm] = useState('')
   const [context, setContext] = useState('')
@@ -33,8 +35,8 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
   const termWords = term.trim() === '' ? 0 : term.trim().split(/\s+/).length
   const same = term.trim() === '' ? [] : words.filter((w) => sameEn(w.term, term))
 
-  const openConfirm = (word: Word): void => {
-    setNotice(onConfirm(word) ? '' : EDITING_OPEN)
+  const openConfirm = (word: Word, notes?: AiNotes): void => {
+    setNotice(onConfirm(word, notes) ? '' : EDITING_OPEN)
   }
 
   const create = async (): Promise<void> => {
@@ -55,7 +57,7 @@ export default function RegisterForm({ onConfirm }: { onConfirm: (word: Word) =>
       })
       const fill = parseFill(raw)
       const now = new Date()
-      openConfirm(applyFill(manualWord({ term, context, meaning }, now), fill, 'new', now))
+      openConfirm(applyFill(manualWord({ term, context, meaning }, now), fill, 'new', now), notesFrom({ term, meaning }, fill))
     } catch (e) {
       if (ctl.signal.aborted) return
       const kind = e instanceof GeminiError ? e.kind : 'bad-response'

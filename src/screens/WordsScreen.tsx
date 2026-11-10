@@ -4,6 +4,7 @@ import { useAppData } from '../app/useAppData.ts'
 import { SAVE_FAILED } from '../components/ui.ts'
 import { addWord, deleteWord, updateWord } from '../lib/db.ts'
 import type { Word } from '../lib/types.ts'
+import type { AiNotes } from '../lib/notice.ts'
 import BulkImport from './words/BulkImport.tsx'
 import FillBanner from './words/FillBanner.tsx'
 import RegisterForm from './words/RegisterForm.tsx'
@@ -14,7 +15,7 @@ const NOT_SAVED = '保存しませんでした。AI で補ったか、ほかで�
 // 書けた後に、一覧の読み直しだけ失敗したとき
 const RELOAD_FAILED = '保存しました。一覧を読み直せないので、アプリを閉じて開き直してください'
 
-type Editing = { word: Word; isNew: boolean }
+type Editing = { word: Word; isNew: boolean; notes?: AiNotes }
 
 export default function WordsScreen() {
   const { db, reload } = useAppData()
@@ -103,6 +104,7 @@ export default function WordsScreen() {
         <WordEditor
           key={editing.word.id}
           original={editing.word}
+          initialNotes={editing.notes}
           title={editing.isNew ? '確認して保存' : '編集'}
           onSave={onSave}
           onCancel={() => close(editing.word.id, editing.isNew ? 0 : listY.current)}
@@ -111,11 +113,11 @@ export default function WordsScreen() {
       <div className={editing ? 'hidden' : undefined}>
         <RegisterForm
           key={formKey}
-          onConfirm={(word) => {
+          onConfirm={(word, notes) => {
             // 「作る」の返事を待つ間に一覧の「編集」を開いていたら、確認の画面で置き換えない（打ちかけの直しを消さない）
             if (editingOpen.current) return false
             setMessage('')
-            setEditing((cur) => cur ?? { word, isNew: true })
+            setEditing((cur) => cur ?? { word, isNew: true, notes })
             // 確認の画面は見出しから見えるように、いちばん上から
             window.scrollTo(0, 0)
             return true

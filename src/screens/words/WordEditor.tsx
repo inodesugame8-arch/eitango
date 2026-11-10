@@ -4,6 +4,8 @@
 // 「AI で作り直す」は、今の英語・出会った英文・意味を Gemini に送り、この画面で直していない欄と空の欄を作り直す（保存はしない）。
 // 作り直したときの英語・出会った英文のまま保存すると、穴埋めを残して AI で補う前の印を外す。
 // 許容訳と紛らわしい誤訳の両方にある訳があれば、保存せずに知らせる
+// 最後に AI を呼んだときの返事から、英語の欄の下に打ち間違いの知らせと「候補で作り直す」、意味の欄の下に AI が別の意味で
+// 作ったかもしれない知らせを出す（設計書 2026-11-10 の 4-2 の 3・5-1）。知らせの材料は語のデータに入れない
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAppData } from '../../app/useAppData.ts'
 import { AREA, BUTTON, EN_INPUT, FIELD, JA_INPUT, NOTE, PRIMARY, SAVE_FAILED } from '../../components/ui.ts'
@@ -11,6 +13,7 @@ import { FILL_TIMEOUT_MS } from '../../lib/config.ts'
 import { callGemini, fillErrorText, GeminiError } from '../../lib/gemini/client.ts'
 import { fillPrompt, parseFill } from '../../lib/gemini/prompts.ts'
 import { sameJa } from '../../lib/match.ts'
+import { meaningNotice, notesFrom, typoNotice, type AiNotes } from '../../lib/notice.ts'
 import { redoFields, toFields, type EditorFields } from '../../lib/redo.ts'
 import type { Word } from '../../lib/types.ts'
 import { applyEdit, type AiInputs } from '../../lib/words.ts'
@@ -31,11 +34,13 @@ function Field({ label, note, children }: { label: string; note?: string; childr
 
 export default function WordEditor({
   original,
+  initialNotes,
   title,
   onSave,
   onCancel,
 }: {
   original: Word
+  initialNotes?: AiNotes
   title: string
   onSave: (word: Word) => Promise<void>
   onCancel: () => void
@@ -50,6 +55,8 @@ export default function WordEditor({
   const [saving, setSaving] = useState(false)
   const [redoing, setRedoing] = useState(false)
   const [redoMessage, setRedoMessage] = useState('')
+  // 知らせの材料（「作る」の返事から始め、作り直すたびに替える。作り直しに失敗したときは前のまま）
+  const [notes, setNotes] = useState<AiNotes | undefined>(initialNotes)
   const abort = useRef<AbortController | null>(null)
 
   // 画面を閉じたら（保存・やめる・別の画面へ）、AI の呼び出しを止める
@@ -58,10 +65,11 @@ export default function WordEditor({
   const set = (key: keyof EditorFields) => (e: { target: { value: string } }) =>
     setD((x) => ({ ...x, [key]: e.target.value }))
 
-  const redo = async (): Promise<void> => {
+  // term を渡したときは、英語をその値に替えて作り直す（「候補で作り直す」）。失敗したら何も変えない
+  const redo = async (term?: string): Promise<void> => {
     if (d.term.trim() === '' || redoing || saving) return
     // 待つ間は欄を書き換えられないので、送る値と、返事を当てはめる値は同じ
-    const sent = d
+    const sent = term === undefined ? d : { ...d, term }
     const ctl = new AbortController()
     abort.current = ctl
     setRedoing(true)
@@ -75,10 +83,12 @@ export default function WordEditor({
         timeoutMs: FILL_TIMEOUT_MS,
         signal: ctl.signal,
       })
-      const redone = redoFields(sent, base, parseFill(raw))
+      const fill = parseFill(raw)
+      const redone = redoFields(sent, base, fill)
       setD(redone.fields)
       setBase(redone.base)
       setAiFor({ term: sent.term, context: sent.context })
+      setNotes(notesFrom(sent, fill))
       setRedoMessage(REDO_DONE)
     } catch (e) {
       if (ctl.signal.aborted) return
@@ -131,12 +141,30 @@ export default function WordEditor({
     }
   }
 
+  const typo = typoNotice(notes, d.term)
+  const drift = meaningNotice(notes)
+
   return (
     <section className="py-4">
       <h2 className="font-bold">{title}</h2>
       <Field label="英語（必須）">
         <input value={d.term} onChange={set('term')} readOnly={redoing} {...EN_INPUT} className={FIELD} />
       </Field>
+      {typo && (
+        <div className="mt-1">
+          <p>
+            打ち間違いかもしれません。「{typo.suggestion}」では？{typo.reason !== '' && `（${typo.reason}）`}
+          </p>
+          <button
+            type="button"
+            onClick={() => void redo(typo.suggestion)}
+            disabled={redoing || saving}
+            className={`mt-1 ${BUTTON}`}
+          >
+            候補で作り直す
+          </button>
+        </div>
+      )}
       <Field label="種類">
         <select
           value={d.kind}
@@ -157,6 +185,7 @@ export default function WordEditor({
       <Field label="意味（必須）">
         <input value={d.meaning} onChange={set('meaning')} readOnly={redoing} {...JA_INPUT} className={FIELD} />
       </Field>
+      {drift !== '' && <p className="mt-1">AI は「{drift}」の意味で作ったかもしれません。例文などを確かめてください</p>}
       <div className="mt-2">
         <button
           type="button"
