@@ -215,6 +215,20 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     })
     expect([out.acceptedEn, out.cloze, out.needsAi]).toEqual([['give up', 'quit'], "don't ___ ___, we can still win", false])
   })
+
+  it('英語を変えて作り直したときも、穴の答えが変える前の英語のままなら穴埋めを空にする（設計書 2026-11-10 の 5-3）', () => {
+    // チャットの「you're gonna loose」から loose を登録し、「候補で作り直す」で lose にした。
+    // 穴埋めは出会った英文から作られるので、答えが loose のまま残った
+    const original = word({
+      term: 'loose',
+      context: "you're gonna loose lol",
+      acceptedEn: ['loose'],
+      cloze: "you're gonna ___ lol",
+      clozeAnswer: 'loose',
+    })
+    const out = applyEdit(original, { ...original, term: 'lose' }, now, { term: 'lose', context: "you're gonna loose lol" })
+    expect(['cloze' in out, 'clozeAnswer' in out, out.needsAi, out.acceptedEn]).toEqual([false, false, false, ['lose']])
+  })
 })
 
 describe('sortWords（一覧の並び。仕様書 5-2）', () => {

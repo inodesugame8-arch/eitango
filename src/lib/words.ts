@@ -78,6 +78,7 @@ export interface AiInputs {
 // 許容訳には意味を必ず入れておく（7-2）。カードの FSRS の状態はここでは触らない。
 // aiFor（作り直したときの英語・英文）が今の英語・英文と同じなら、穴埋めを残し、AI で補う前の印を外す。
 // 作り直した後に変えていたら（元に戻した場合も）、英語か出会った英文を変えたときと同じにする（設計書 2026-11-09 の 3-5）
+// 英語を変えたのに、穴の答えが変える前の英語のままなら、穴埋めを空にする（設計書 2026-11-10 の 5-3）
 export function applyEdit(original: Word, draft: Word, now: Date, aiFor?: AiInputs): Word {
   const out: Word = {
     id: original.id,
@@ -131,6 +132,12 @@ export function applyEdit(original: Word, draft: Word, now: Date, aiFor?: AiInpu
     delete out.cloze
     delete out.clozeAnswer
     out.needsAi = true
+  }
+  // 照合は穴の答えも ○ にするので、打ち間違いの英語を候補に直して作り直しても、出会った英文に残る打ち間違いの綴りで
+  // ○ にならないように。AI で補う前の印は上の決まりのまま
+  if (termChanged && out.clozeAnswer !== undefined && sameEn(out.clozeAnswer, original.term)) {
+    delete out.cloze
+    delete out.clozeAnswer
   }
   return out
 }
