@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FillResult } from './gemini/prompts.ts'
-import { meaningNotice, notesFrom, typoNotice, type AiNotes } from './notice.ts'
+import { candidateMeaning, meaningNotice, notesFrom, typoNotice, type AiNotes } from './notice.ts'
 
 // recieve と打って「作る」を押したときの AI の返事
 function fill(over: Partial<FillResult> = {}): FillResult {
@@ -60,6 +60,50 @@ describe('typoNotice（打ち間違いの知らせ。設計書 2026-11-10 の 5-
   it('英語の欄を書き換えたら出さない（点検したのは書き換える前の英語）', () => {
     expect(typoNotice(notes(), 'receive')).toBeNull()
     expect(typoNotice(notes(), 'recieved')).toBeNull()
+  })
+
+  it('候補が英語の形でない（日本語・説明つき）なら出さない（押して英語の欄に入れないため）', () => {
+    expect(typoNotice(notes({ check: { suspect: true, suggestion: '受け取る', reason: '' } }), 'recieve')).toBeNull()
+    expect(typoNotice(notes({ check: { suspect: true, suggestion: 'receive（受け取る）', reason: '' } }), 'recieve')).toBeNull()
+  })
+
+  it('ハイフンと空白の違いだけなら出さない（pay-to-win と pay to win）', () => {
+    const pay = notesFrom({ term: 'pay to win' }, fill({ check: { suspect: true, suggestion: 'pay-to-win', reason: '' } }))
+    expect(typoNotice(pay, 'pay to win')).toBeNull()
+  })
+
+  it('文の候補（アポストロフィ・句読点を含む英語）は出す', () => {
+    const sentence = notesFrom(
+      { term: 'I has been there' },
+      fill({ check: { suspect: true, suggestion: "I've been there, right?", reason: '' } }),
+    )
+    expect(typoNotice(sentence, 'I has been there')).toEqual({ suggestion: "I've been there, right?", reason: '' })
+  })
+})
+
+describe('candidateMeaning（「候補で作り直す」で送る意味。設計書 2026-11-10 の 5-1）', () => {
+  // loose と打って（出会った英文: you're gonna loose lol）「作る」を押し、AI が「ゆるい」で作った
+  const loose = notesFrom(
+    { term: 'loose' },
+    fill({ meaning: 'ゆるい', check: { suspect: true, suggestion: 'lose', reason: '' } }),
+  )
+
+  it('意味の欄が、学習者が入れていない AI の意味のままなら空文字（候補の英語の意味を AI に作り直させる）', () => {
+    expect(candidateMeaning(loose, 'ゆるい')).toBe('')
+    expect(candidateMeaning(loose, ' ゆるい ')).toBe('')
+  })
+
+  it('意味の欄を直していたら、欄のまま', () => {
+    expect(candidateMeaning(loose, '負ける')).toBe('負ける')
+  })
+
+  it('学習者が意味を入れていたら、欄のまま', () => {
+    const mine = notesFrom({ term: 'loose', meaning: '負ける' }, fill({ meaning: '負ける' }))
+    expect(candidateMeaning(mine, '負ける')).toBe('負ける')
+  })
+
+  it('材料が無ければ、欄のまま', () => {
+    expect(candidateMeaning(undefined, 'ゆるい')).toBe('ゆるい')
   })
 })
 

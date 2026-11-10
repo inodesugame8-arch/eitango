@@ -134,8 +134,13 @@ export function applyEdit(original: Word, draft: Word, now: Date, aiFor?: AiInpu
     out.needsAi = true
   }
   // 照合は穴の答えも ○ にするので、打ち間違いの英語を候補に直して作り直しても、出会った英文に残る打ち間違いの綴りで
-  // ○ にならないように。AI で補う前の印は上の決まりのまま
-  if (termChanged && out.clozeAnswer !== undefined && sameEn(out.clozeAnswer, original.term)) {
+  // ○ にならないように。大文字・小文字だけを直したとき（穴の答えが新しい英語とも同じ）は残す。AI で補う前の印は上の決まりのまま
+  if (
+    termChanged &&
+    out.clozeAnswer !== undefined &&
+    sameEn(out.clozeAnswer, original.term) &&
+    !sameEn(out.clozeAnswer, out.term)
+  ) {
     delete out.cloze
     delete out.clozeAnswer
   }

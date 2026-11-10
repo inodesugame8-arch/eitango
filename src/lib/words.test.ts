@@ -229,6 +229,18 @@ describe('applyEdit（編集の保存。仕様書 9-4）', () => {
     const out = applyEdit(original, { ...original, term: 'lose' }, now, { term: 'lose', context: "you're gonna loose lol" })
     expect(['cloze' in out, 'clozeAnswer' in out, out.needsAi, out.acceptedEn]).toEqual([false, false, false, ['lose']])
   })
+
+  it('大文字・小文字だけを直して作り直したときは、穴の答えが新しい英語と同じなので穴埋めを残す', () => {
+    const original = word({
+      term: 'Pog',
+      context: 'that play was Pog',
+      acceptedEn: ['Pog'],
+      cloze: 'that play was ___',
+      clozeAnswer: 'Pog',
+    })
+    const out = applyEdit(original, { ...original, term: 'pog' }, now, { term: 'pog', context: 'that play was Pog' })
+    expect([out.cloze, out.clozeAnswer, out.needsAi]).toEqual(['that play was ___', 'Pog', false])
+  })
 })
 
 describe('sortWords（一覧の並び。仕様書 5-2）', () => {

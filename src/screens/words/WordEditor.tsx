@@ -13,7 +13,7 @@ import { FILL_TIMEOUT_MS } from '../../lib/config.ts'
 import { callGemini, fillErrorText, GeminiError } from '../../lib/gemini/client.ts'
 import { fillPrompt, parseFill } from '../../lib/gemini/prompts.ts'
 import { sameJa } from '../../lib/match.ts'
-import { meaningNotice, notesFrom, typoNotice, type AiNotes } from '../../lib/notice.ts'
+import { candidateMeaning, meaningNotice, notesFrom, typoNotice, type AiNotes } from '../../lib/notice.ts'
 import { redoFields, toFields, type EditorFields } from '../../lib/redo.ts'
 import type { Word } from '../../lib/types.ts'
 import { applyEdit, type AiInputs } from '../../lib/words.ts'
@@ -55,6 +55,8 @@ export default function WordEditor({
   const [saving, setSaving] = useState(false)
   const [redoing, setRedoing] = useState(false)
   const [redoMessage, setRedoMessage] = useState('')
+  // どちらのボタンで作り直したか（待つ間の文と結果の文を、押したボタンの近くに出すため）
+  const [redoFrom, setRedoFrom] = useState<'redo' | 'candidate'>('redo')
   // 知らせの材料（「作る」の返事から始め、作り直すたびに替える。作り直しに失敗したときは前のまま）
   const [notes, setNotes] = useState<AiNotes | undefined>(initialNotes)
   const abort = useRef<AbortController | null>(null)
@@ -65,13 +67,15 @@ export default function WordEditor({
   const set = (key: keyof EditorFields) => (e: { target: { value: string } }) =>
     setD((x) => ({ ...x, [key]: e.target.value }))
 
-  // term を渡したときは、英語をその値に替えて作り直す（「候補で作り直す」）。失敗したら何も変えない
+  // term を渡したときは、英語をその値に替えて作り直す（「候補で作り直す」）。意味が AI の作ったままなら空で送り、
+  // 候補の英語の意味を作り直させる（candidateMeaning）。失敗したら何も変えない
   const redo = async (term?: string): Promise<void> => {
     if (d.term.trim() === '' || redoing || saving) return
     // 待つ間は欄を書き換えられないので、送る値と、返事を当てはめる値は同じ
-    const sent = term === undefined ? d : { ...d, term }
+    const sent = term === undefined ? d : { ...d, term, meaning: candidateMeaning(notes, d.meaning) }
     const ctl = new AbortController()
     abort.current = ctl
+    setRedoFrom(term === undefined ? 'redo' : 'candidate')
     setRedoing(true)
     setRedoMessage('')
     setError('')
@@ -161,10 +165,11 @@ export default function WordEditor({
             disabled={redoing || saving}
             className={`mt-1 ${BUTTON}`}
           >
-            候補で作り直す
+            {redoing && redoFrom === 'candidate' ? '作り直しています' : '候補で作り直す'}
           </button>
         </div>
       )}
+      {redoFrom === 'candidate' && redoMessage && <p className="mt-1">{redoMessage}</p>}
       <Field label="種類">
         <select
           value={d.kind}
@@ -193,10 +198,10 @@ export default function WordEditor({
           disabled={redoing || saving || d.term.trim() === ''}
           className={BUTTON}
         >
-          {redoing ? '作り直しています' : 'AI で作り直す'}
+          {redoing && redoFrom === 'redo' ? '作り直しています' : 'AI で作り直す'}
         </button>
         <p className={`mt-1 ${NOTE}`}>{REDO_NOTE}</p>
-        {redoMessage && <p className="mt-1">{redoMessage}</p>}
+        {redoFrom === 'redo' && redoMessage && <p className="mt-1">{redoMessage}</p>}
       </div>
       <Field label="口調・使う場面">
         <input value={d.tone} onChange={set('tone')} readOnly={redoing} {...JA_INPUT} className={FIELD} />
